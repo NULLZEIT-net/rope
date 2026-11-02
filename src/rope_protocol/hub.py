@@ -59,7 +59,9 @@ class Hub:
         self.hub_name = hub_name
         self.host = host
         self.port = port
-        self.heartbeat_s = heartbeat_s
+        if not 0 < heartbeat_s or timeout_s < 2 * heartbeat_s:
+            raise ValueError("timeout_s must be at least twice heartbeat_s (one lost heartbeat is no disconnect)")
+        self.heartbeat_s = heartbeat_s                 # the hub decides both for every participant (WELCOME, spec 9)
         self.timeout_s = timeout_s
         self.on_stream_checked = on_stream_checked
         self.block_size = block_size

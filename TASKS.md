@@ -8,21 +8,23 @@ _(see `docs/ideas.md`)_
 
 ## Backlog
 - [ ] **Packaging** as `rope-protocol` on PyPI (check name availability first).
-- [ ] **Heartbeat and timeout for radio links:** the assumed 2 s / ~10 s may be too short for directional radio links
-      (longer dropouts are normal there). Make both configurable; measure on a real radio network before fixing
-      defaults (spec §9).
+- [ ] **Heartbeat and timeout for radio links:** configurable at the hub (done 2026-11-02); measure on a real radio
+      network before fixing the defaults (spec §9).
 - [ ] Resolve the open points listed at the end of `docs/spec.md`.
 
 
 - [ ] **Offline media:** help for clearing sticks (spec §8.6, open point).
 
 ## In progress
-- [ ] **Block repair over offline media** (`feature/media-repair`, spec §8.6).
 
 ## Done
 - 2026-11-02 Test bench, rest (spec §13): hub process killed hard twice during a transfer; opt-in soak over many
   seeds of every harsh-link scenario (`ROPE_SOAK_SEEDS=n`).
 - 2026-11-02 Status for operators (spec §8.7): `python -m rope_protocol.status <hub folder>`, read-only.
+- 2026-11-02 Heartbeat and timeout set by the hub for everyone (spec §9): also used for sending; the timeout must be
+  at least twice the heartbeat interval.
+- 2026-10-26 Block repair over offline media (#17, spec §8.6): `STREAM_CHECK` + `BLOCK_SUMS` in bundles, repairs
+  remembered in `media_repairs.json`.
 - 2026-10-26 stop() waits for disk writes (#16, spec §10): writes counted from the hand-over and shielded from
   cancellation.
 - 2026-10-26 Restarts at every step (#15, spec §13): participant or hub restarted just before every frame type and
