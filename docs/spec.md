@@ -308,6 +308,14 @@ committed offset, ignore duplicates, report damaged items. Network and media may
   - The hub keeps what a consumer last reported in a bundle (`media_have.json`). That is state per consumer, but for
     media only. On the network the consumer still reports in `HELLO` (§7).
 
+### 8.7 Status for operators (proposed)
+
+`python -m rope_protocol.status <hub folder>` (`rope_protocol.status.hub_status`) shows what a hub holds, read from
+its folder: every stream with participant, name, generation, committed size and whether it is growing, complete or
+verified; the number of messages held, how many wait for each recipient, and recipients that are not on the
+participant list. It only reads the state files and never writes, so it can run next to a working hub or on a copy.
+Not part of the wire format; applications may show the same in their own user interface.
+
 ## 9. Interruptions and resumption
 
 Core idea: the data lives on the source's disk and the receiver knows its committed offset. An interruption costs time,
@@ -411,8 +419,14 @@ link of the source and on the link of a consumer.
 - The normal test run cuts the connection at every step and tries the other faults at a few steps. Setting
   `ROPE_SOAK=1` runs every fault at every step (several minutes); it belongs before every release.
 - A restart stops the program part the way a program ends (tasks cancelled, nothing more written) and starts a new
-  one on the same folders. A power cut, which can also lose what the operating system had not written yet, is not
-  simulated.
+  one on the same folders.
+- **Killed process** (`tests/test_kill.py`, implemented 2026-11-02): the hub runs in its own process and is killed
+  hard twice while it receives a stream (no stop, no clean-up, Python buffers lost), then started again on the same
+  folder. A power cut of the whole machine, which can also lose what the operating system had not written to disk yet,
+  is still not simulated; the store only counts what was flushed and fsynced before the acknowledgement (§8.3).
+- **Soak over many seeds** (`tests/test_soak.py`, opt-in): `ROPE_SOAK_SEEDS=n` repeats every scenario over harsh
+  links (relay with hub restart, messages, delivery reports, media and network at the same time, repair) with `n`
+  different seeds. Like `ROPE_SOAK=1` it belongs before every release.
 - A duplicated frame inside one TCP connection does not happen on a real network (TCP removes duplicates). It is
   still tested because it shows how a participant reacts to a frame it did not expect.
 
