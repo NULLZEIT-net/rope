@@ -171,6 +171,9 @@ All numbers are **proposed** starting values until measured.
 - Segments hold roughly one second of data, at most 256 KiB (**assumed** suitable), and are compressed individually.
 - Every segment carries stream id, offset, raw and compressed length, checksum and timestamp.
 - The source keeps only a bounded number of unacknowledged segments in flight, e.g. 8. This bounds memory and backlog.
+- The application can add a stream while the source runs (**decided**, `Source.add_stream`): a recording program
+  starts new files during an operation. The new stream is sent like the others from the next round on; a name known
+  from an earlier run of the source continues where the hub left off.
 
 ### 8.3 Acknowledging
 
@@ -196,6 +199,9 @@ All numbers are **proposed** starting values until measured.
   individually.
 - Each recipient acknowledges after storing it. The hub tracks "delivered" or "pending" per recipient.
 - Messages take priority over stream segments.
+- A message may be addressed to the **hub itself** (its identifier as recipient, **decided**): it is for the
+  application running the hub (`Hub(on_message=...)`), which gets it once; for the delivery report it counts as
+  delivered to the hub. Example: a source tells the hub application which device it is.
 - Duplicates are detected by id and shown only once.
 
 **First implementation (2026-10-26, proposed):**

@@ -267,3 +267,24 @@ def test_hub_timeout_applies_to_both_directions(tmp_path):
 def test_timeout_must_leave_room_for_heartbeats(tmp_path):
     with pytest.raises(ValueError):
         Hub(str(tmp_path / "h"), {"source-1": "source"}, "op-1", heartbeat_s=2.0, timeout_s=3.0)
+
+
+def test_stream_added_while_running(tmp_path):
+    """A recording program starts a new file during the operation: the application adds it to the running source
+    (spec 8.2); both streams arrive bit for bit, the second one without a restart."""
+    first, second = os.urandom(300_000), os.urandom(500_000)
+    p1 = _file(tmp_path, "a.dat", first)
+
+    async def run():
+        async with Bench(str(tmp_path)) as b:
+            src = b.source({"a": p1}).start()
+            await _until(lambda: src.sessions == 1)
+            p2 = _file(tmp_path, "b.dat", second)
+            assert src.add_stream("b", p2) and not src.add_stream("b", p2)
+            for name in ("a", "b"):
+                src.complete(name)
+            assert await src.wait_checked("a", 30) == "ok" and await src.wait_checked("b", 30) == "ok"
+            assert src.sessions == 1
+            await src.stop()
+            assert _sha(b.received("b").path) == hashlib.sha256(second).hexdigest()
+    asyncio.run(run())
