@@ -332,6 +332,11 @@ unnecessary reconnect and greeting. Therefore heartbeat interval and timeout **m
 **measured on real radio links** before defaults are fixed. Losing the TCP connection is harmless for data (resume from
 the committed offset), but frequent reconnects cost time and bandwidth.
 
+**Configuration (decided):** the hub is configured with both values and sends them in `WELCOME`; every participant
+uses them for its own heartbeat, for receiving **and for sending** (a send that cannot drain within the timeout ends
+the session, like silence). The timeout MUST be at least twice the heartbeat interval, so that one lost heartbeat is
+never a disconnect; the hub refuses other values at start. The defaults (2 s / 10 s) stay **assumed** until measured.
+
 **Catch-up order (proposed, open):** messages first, then the tail of the currently growing stream (so the consumer is
 up to date), then the backlog in order.
 
@@ -622,4 +627,5 @@ Status: **proposed** (block size, the half rule and the 3 rounds are assumptions
 - [ ] Data rate of typical streams.
 - [ ] Compression ratio and CPU time on target hardware.
 - [ ] Heartbeat and timeout on a real radio network, so that short dropouts do not count as disconnects. The current
-      assumption (2 s / ~10 s) may be too short for radio links – see the note in §9. Make both configurable.
+      assumption (2 s / ~10 s) may be too short for radio links – see the note in §9. Configurable at the hub
+      (decided, §9); only the defaults are still to be measured.

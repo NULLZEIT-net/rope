@@ -242,3 +242,28 @@ def test_radio_profile_soak(tmp_path):
             await src.stop()
             assert _sha(b.received("soak").path) == hashlib.sha256(data).hexdigest()
     asyncio.run(run())
+
+
+def test_hub_timeout_applies_to_both_directions(tmp_path):
+    """The hub decides heartbeat and timeout for everyone (spec section 9, configurable for radio links): a participant
+    whose own default is short keeps its session through a dropout that is longer than its own default but shorter
+    than the hub's timeout - while sending, too (TCP back-pressure during the dropout)."""
+    data = os.urandom(600_000)
+    path = _file(tmp_path, "r.dat", data)
+    slow = Profile("slow", rate=200_000)
+
+    async def run():
+        async with Bench(str(tmp_path), slow, script=[(0.4, "blackout", 1.5)], heartbeat_s=0.2, timeout_s=4.0) as b:
+            src = b.source({"r": path}, timeout_s=0.6).start()         # own default shorter than the dropout
+            await _until(lambda: src.sessions == 1)
+            src.complete("r")
+            assert await src.wait_checked("r", 30) == "ok"
+            assert src.sessions == 1                                     # no reconnect: the hub's 4 s applied
+            await src.stop()
+            assert _sha(b.received("r").path) == hashlib.sha256(data).hexdigest()
+    asyncio.run(run())
+
+
+def test_timeout_must_leave_room_for_heartbeats(tmp_path):
+    with pytest.raises(ValueError):
+        Hub(str(tmp_path / "h"), {"source-1": "source"}, "op-1", heartbeat_s=2.0, timeout_s=3.0)
