@@ -19,7 +19,7 @@ _(see `docs/ideas.md`)_
 
 ## Done
 - 2026-11-02 Version 0.1.0 (first version for an application); `Source.add_stream` adds a stream while running
-  (spec §8.2).
+  (spec §8.2); messages to the hub itself reach the hub application (spec §8.5).
 - 2026-11-02 Test bench, rest (spec §13): hub process killed hard twice during a transfer; opt-in soak over many
   seeds of every harsh-link scenario (`ROPE_SOAK_SEEDS=n`).
 - 2026-11-02 Status for operators (spec §8.7): `python -m rope_protocol.status <hub folder>`, read-only.

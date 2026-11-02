@@ -231,3 +231,21 @@ def test_messages_and_streams_share_the_link(tmp_path):
             assert b.received("big").committed < len(data)                  # ... and is still on its way
             await src.stop()
     asyncio.run(run())
+
+
+def test_message_to_the_hub_reaches_the_hub_application_once(tmp_path):
+    """A message addressed to the hub's identifier is for the application running the hub (spec 8.5): it gets it once
+    (also when the message comes again), and the sender's delivery report says it was delivered."""
+    got, reports = [], []
+
+    async def run():
+        async with RelayBench(str(tmp_path), on_message=lambda m, body: got.append((m["from"], m["kind"], body))) as b:
+            src = b.source({}, on_delivery=lambda i, r: reports.append((i, r))).start()
+            msg_id = src.send_message(["hub"], "device", b'{"device_id": "x"}')
+            await _until(lambda: got and reports)
+            assert got == [("source-1", "device", b'{"device_id": "x"}')]
+            assert b.hub.message_status(msg_id)["delivered"] == ["hub"]
+            assert b.hub.message_status(msg_id)["unknown"] == []
+            await src.stop()
+    asyncio.run(run())
+    assert len(got) == 1

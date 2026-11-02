@@ -45,7 +45,7 @@ class Hub:
 
     def __init__(self, root, participants, operation, hub_id="hub", host="127.0.0.1", port=DEFAULT_PORT,
                  heartbeat_s=2.0, timeout_s=10.0, on_stream_checked=None, block_size=BLOCK_SIZE,
-                 segment_bytes=256 * 1024, window=8, poll_s=0.5, zlib_level=1, hub_name=None):
+                 segment_bytes=256 * 1024, window=8, poll_s=0.5, zlib_level=1, hub_name=None, on_message=None):
         self.roster = roster.parse(participants, hub_id, hub_name)
         self.store = StreamStore(root)
         self._media_have_path = os.path.join(os.path.abspath(root), "media_have.json")
@@ -64,6 +64,7 @@ class Hub:
         self.heartbeat_s = heartbeat_s                 # the hub decides both for every participant (WELCOME, spec 9)
         self.timeout_s = timeout_s
         self.on_stream_checked = on_stream_checked
+        self.on_message = on_message                   # (meta, body) of messages addressed to the hub itself (spec 8.5)
         self.block_size = block_size
         self.segment_bytes = segment_bytes
         self.window = window
@@ -302,11 +303,22 @@ class Hub:
         return False
 
     def _custody_state(self, sender, to):
-        """State of a new message at the hub: known recipients pending, the others unknown (spec 8.5)."""
-        return dict(pending=[p for p in dict.fromkeys(to) if p in self.participants and p != sender], delivered=[],
-                    unknown=[p for p in dict.fromkeys(to) if p not in self.participants])
+        """State of a new message at the hub: known recipients pending, the hub itself delivered (its application
+        gets the message), the others unknown (spec 8.5)."""
+        return dict(pending=[p for p in dict.fromkeys(to) if p in self.participants and p != sender],
+                    delivered=[self.hub_id] if self.hub_id in to else [],
+                    unknown=[p for p in dict.fromkeys(to) if p not in self.participants and p != self.hub_id])
+
+    def _to_hub(self, meta):
+        """Hand a new message addressed to the hub to the application (once: only new messages come here)."""
+        if self.hub_id in meta["to"] and self.on_message is not None:
+            try:
+                self.on_message(dict(meta), self.messages.body(meta["id"]))
+            except Exception:                          # the application's error must never break the session
+                log.exception("on_message failed for message %s", meta["id"])
 
     def _new_message(self, meta, state):
+        self._to_hub(meta)
         if state["unknown"]:
             log.warning("message %s from %s: %s not on the participant list, not delivered",
                         meta["id"], meta["from"], ", ".join(state["unknown"]))
@@ -397,7 +409,10 @@ class Hub:
                 else:
                     media.import_stream_end(self.store, sender, f, report, skipped)
             elif f.type == F.FrameType.MESSAGE:
+                known = self.messages.get(m["id"]) is not None
                 media.import_message(self.messages, f, report, self._custody_state(sender, m["to"]), sender)
+                if not known and self.messages.get(m["id"]) is not None:
+                    self._to_hub(m)
             elif f.type == F.FrameType.MESSAGE_ACK:
                 self._delivered(m["id"], sender)
                 report.message_acks.append(m["id"])
