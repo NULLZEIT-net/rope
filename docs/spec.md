@@ -171,6 +171,9 @@ All numbers are **proposed** starting values until measured.
 - Segments hold roughly one second of data, at most 256 KiB (**assumed** suitable), and are compressed individually.
 - Every segment carries stream id, offset, raw and compressed length, checksum and timestamp.
 - The source keeps only a bounded number of unacknowledged segments in flight, e.g. 8. This bounds memory and backlog.
+- The application can add a stream while the source runs (**decided**, `Source.add_stream`): a recording program
+  starts new files during an operation. The new stream is sent like the others from the next round on; a name known
+  from an earlier run of the source continues where the hub left off.
 
 ### 8.3 Acknowledging
 

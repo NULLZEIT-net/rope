@@ -92,11 +92,22 @@ class Source(Participant):
         if os.path.exists(self._state_path):
             with open(self._state_path, encoding="utf-8") as f:
                 saved = json.load(f)
+        self._saved_at_start = saved
         self.streams = {n: SourceStream(n, p, saved.get(n)) for n, p in streams.items()}
         self.sender = StreamSender(self._refresh, segment_bytes, window, poll_s, zlib_level,
                                    on_replaced=self._replaced, peer="hub")
 
     # --- application interface -------------------------------------------------------------------------------
+    def add_stream(self, name, path):
+        """Send one more file from now on (a recording program started a new file). Call it in the event loop of the
+        source (from another thread: ``loop.call_soon_threadsafe``). A name known from an earlier run continues where
+        the hub left off; adding a known name again does nothing. Returns True if the stream is new."""
+        if name in self.streams:
+            return False
+        self.streams[name] = SourceStream(name, path, self._saved_at_start.get(name))
+        self.sender.wake.set()
+        return True
+
     def complete(self, name):
         """The application declares the stream finished (e.g. file unchanged for a while): send the final check."""
         self.streams[name].complete_requested = True
