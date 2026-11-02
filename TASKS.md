@@ -7,8 +7,6 @@ finished → **Done** (date, short description; details in `docs/`).
 _(see `docs/ideas.md`)_
 
 ## Backlog
-- [ ] **Test bench, rest:** a long soak over many seeds of the random link profiles (opt-in, like `ROPE_SOAK`);
-      a real power cut (process killed, unsynced data lost) instead of a program stop.
 - [ ] **Packaging** as `rope-protocol` on PyPI (check name availability first).
 - [ ] **Heartbeat and timeout for radio links:** configurable at the hub (done 2026-11-02); measure on a real radio
       network before fixing the defaults (spec §9).
@@ -20,6 +18,9 @@ _(see `docs/ideas.md`)_
 ## In progress
 
 ## Done
+- 2026-11-02 Test bench, rest (spec §13): hub process killed hard twice during a transfer; opt-in soak over many
+  seeds of every harsh-link scenario (`ROPE_SOAK_SEEDS=n`).
+- 2026-11-02 Status for operators (spec §8.7): `python -m rope_protocol.status <hub folder>`, read-only.
 - 2026-11-02 Heartbeat and timeout set by the hub for everyone (spec §9): also used for sending; the timeout must be
   at least twice the heartbeat interval.
 - 2026-10-26 Block repair over offline media (#17, spec §8.6): `STREAM_CHECK` + `BLOCK_SUMS` in bundles, repairs
