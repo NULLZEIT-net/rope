@@ -369,6 +369,22 @@ for closed, physically controlled networks. Anyone on the same network can read 
 participant. Do not use ROPE over the internet or on shared networks without an additional protection layer (e.g. a
 VPN). The participant list prevents accidental mix-ups, not attacks.
 
+**No encryption in ROPE does not mean no protection is needed.** Protecting data in transit and the devices themselves
+is the job of the layers below and around ROPE (**decided**: ROPE stays simple; these layers are chosen per deployment):
+
+- **Network layer:** a VPN on operating-system level (for example WireGuard) between the participants, or a radio
+  system that encrypts its channel. ROPE runs unchanged on top of either; it only needs a TCP connection.
+- **Access to the network:** a closed network with its own key (for example WPA2/WPA3 with a strong passphrase), no
+  open or shared networks, no port forwarding to the internet.
+- **Devices:** current operating system updates, endpoint protection (virus scanner), user accounts without
+  administrator rights for daily work, disk encryption where devices can be lost.
+- **Offline media (§8.6):** bundles on removable media are not encrypted either. Treat the media like the data on them
+  (keep them with the team, wipe or encrypt them according to the deployment's rules).
+
+What ROPE itself guarantees is **integrity against accidents**, not against attacks: every frame carries a CRC, every
+stream is checked with SHA-256 at the end (§14), and only participants from the list are accepted. An attacker on the
+same network can still read, replay or forge traffic; that is exactly what the layers above prevent.
+
 ## 12. Failure cases
 
 | Case | Detection | Reaction |
