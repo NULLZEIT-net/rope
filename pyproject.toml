@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,13 +7,15 @@ name = "rope-protocol"
 dynamic = ["version"]
 description = "ROPE - Resumable Offline Protocol for Emergencies"
 readme = "README.md"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "Daniel Fankhauser" }]
+keywords = ["resumable", "transfer", "offline", "custody", "radio", "store-and-forward"]
 requires-python = ">=3.11"
 dependencies = []
 classifiers = [
-    "Development Status :: 1 - Planning",
-    "License :: OSI Approved :: Apache Software License",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
     "Operating System :: Microsoft :: Windows",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
@@ -23,6 +25,8 @@ classifiers = [
 [project.urls]
 Homepage = "https://github.com/d-fankhauser/rope"
 Specification = "https://github.com/d-fankhauser/rope/blob/main/docs/spec.md"
+Changelog = "https://github.com/d-fankhauser/rope/blob/main/CHANGELOG.md"
+Issues = "https://github.com/d-fankhauser/rope/issues"
 
 [tool.setuptools.dynamic]
 version = { attr = "rope_protocol.__version__" }

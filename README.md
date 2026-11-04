@@ -1,14 +1,15 @@
 <h1>
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/rope-logo-dark.svg">
-    <img alt="ROPE" src="docs/images/rope-logo.svg" height="72">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/d-fankhauser/rope/main/docs/images/rope-logo-dark.svg">
+    <img alt="ROPE" src="https://raw.githubusercontent.com/d-fankhauser/rope/main/docs/images/rope-logo.svg" height="72">
   </picture>
 </h1>
 
 **Resumable Offline Protocol for Emergencies**
 
 [![Tests](https://github.com/d-fankhauser/rope/actions/workflows/tests.yml/badge.svg)](https://github.com/d-fankhauser/rope/actions/workflows/tests.yml)
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/rope-protocol.svg)](https://pypi.org/project/rope-protocol/)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/d-fankhauser/rope/blob/main/LICENSE)
 ![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg)
 ![Status: early development](https://img.shields.io/badge/status-early_development-orange.svg)
 
@@ -16,7 +17,7 @@ ROPE transfers growing files and small messages between a small, closed group of
 networks – radio links, Wi-Fi, no internet. Like a rescue line it holds the connection even when it is pulled:
 an interruption costs time, never data.
 
-> **Status:** early development. The [specification](docs/spec.md) is draft 1 with a proposed wire format. Streams
+> **Status:** early development. The [specification](https://github.com/d-fankhauser/rope/blob/main/docs/spec.md) is draft 1 with a proposed wire format. Streams
 > from sources via the hub to consumers work, including resume after disconnects and restarts and block repair, and
 > so do messages with custody and offline media (e.g. a USB stick) as a second path. Interfaces will change.
 
@@ -45,7 +46,7 @@ transfer).
 - **Two paths** – the same segments and messages can also travel on removable media and mix with the network.
 
 ROPE has **no encryption** by design and is meant for closed networks – see
-[Security considerations](docs/spec.md#11-security-considerations).
+[Security considerations](https://github.com/d-fankhauser/rope/blob/main/docs/spec.md#11-security-considerations).
 
 ## How it works (in short)
 
@@ -65,7 +66,7 @@ ROPE has **no encryption** by design and is meant for closed networks – see
 6. Without a network, a participant and the hub exchange the same frames as bundles on removable media
    (`export_media`, `import_media`); network and media mix freely.
 
-Details: [docs/spec.md](docs/spec.md).
+Details: [docs/spec.md](https://github.com/d-fankhauser/rope/blob/main/docs/spec.md).
 
 ## Requirements
 
@@ -74,8 +75,13 @@ Details: [docs/spec.md](docs/spec.md).
 
 ## Installation
 
-Not published yet. The package will be named `rope-protocol` (import `rope_protocol`), because the name `rope` on PyPI
-belongs to a well-known refactoring library.
+```
+python -m pip install rope-protocol
+```
+
+The package is named `rope-protocol` (import `rope_protocol`), because the name `rope` on PyPI belongs to a
+well-known refactoring library. Versions and changes: [CHANGELOG.md](https://github.com/d-fankhauser/rope/blob/main/CHANGELOG.md). While ROPE is in early
+development, pin the version you tested with (e.g. `rope-protocol==0.1.1`).
 
 For development:
 
@@ -134,9 +140,9 @@ ROPE_SOAK=1 python -m pytest tests/test_faults.py
 
 ## Contributing
 
-Contributions are welcome – please read [CONTRIBUTING.md](CONTRIBUTING.md). Questions and ideas: open an issue.
+Contributions are welcome – please read [CONTRIBUTING.md](https://github.com/d-fankhauser/rope/blob/main/CONTRIBUTING.md). Questions and ideas: open an issue.
 
 ## License
 
-Copyright 2026 Daniel Fankhauser. Licensed under the [Apache License, Version 2.0](LICENSE); see also [NOTICE](NOTICE).
+Copyright 2026 Daniel Fankhauser. Licensed under the [Apache License, Version 2.0](https://github.com/d-fankhauser/rope/blob/main/LICENSE); see also [NOTICE](https://github.com/d-fankhauser/rope/blob/main/NOTICE).
 The name "ROPE" in connection with this protocol is not covered by the licence (Apache-2.0, section 6).

@@ -7,6 +7,18 @@ The package version is `rope_protocol.__version__`; the wire protocol has its ow
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-04
+
+First release on PyPI (`pip install rope-protocol`). No change to the code or the wire protocol.
+
+### Added
+- Release workflow: build, check and publish with PyPI trusted publishing; TestPyPI first, PyPI only
+  after the maintainer's approval.
+
+### Changed
+- Package metadata: licence as SPDX expression, development status alpha, links to changelog and issues.
+- README: absolute links (the page is also shown on PyPI), installation from PyPI.
+
 ## [0.1.0] - 2026-11-02
 
 First release (tag `v0.1.0`), wire protocol version 1. Development started on 2026-10-19.
@@ -30,5 +42,6 @@ First release (tag `v0.1.0`), wire protocol version 1. Development started on 20
   participant or hub at every step, a hard kill of the hub process, and a soak test over many random seeds. It found
   several real defects before the release; each is covered by a test that fails without the fix.
 
-[Unreleased]: https://github.com/d-fankhauser/rope/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/d-fankhauser/rope/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/d-fankhauser/rope/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/d-fankhauser/rope/releases/tag/v0.1.0

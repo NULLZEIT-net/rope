@@ -18,6 +18,16 @@ code.
 
 All checks must pass on Windows and Linux, and the maintainer approves every merge.
 
+## Releases (maintainer)
+
+1. Move the entries under `[Unreleased]` in `CHANGELOG.md` to the new version and set `__version__` in
+   `src/rope_protocol/__init__.py` (one pull request).
+2. Optional rehearsal: Actions -> Release -> Run workflow uploads to TestPyPI only.
+3. After the merge, tag the merge commit `v<version>` and push the tag. The release workflow builds and checks the
+   package, uploads it to TestPyPI and then, after approval in the `pypi` environment, to PyPI.
+
+A version on PyPI can never be uploaded again; a broken release is fixed by the next version.
+
 ## Licence of contributions
 
 By submitting a contribution you agree that it is licensed under the
