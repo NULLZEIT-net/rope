@@ -493,6 +493,11 @@ Everything in this section is **proposed** (draft 1).
   listen on the port, it reports this in plain language and names the port; it never silently picks another one.
 - An application may wrap the connection in TLS, e.g. with certificates on both sides, when the network is not closed
   (§11). The frames inside are unchanged; the core does not know whether TLS is in use.
+  **Decided (2026-11-04):** the hub and every participant take an optional `ssl` argument, an `ssl.SSLContext` the
+  application prepares (certificates, trust, verification, minimum version); participants also take
+  `server_hostname` for the name checked against the hub's certificate (default: the hub's host). The TLS handshake
+  has the same time limit as the connection (`timeout_s`). A failed handshake counts as a lost connection: the
+  participant retries with back-off (§9), the hub starts no session. ROPE itself creates no keys or certificates.
 - All integers are unsigned and big-endian (network byte order).
 
 ### 14.2 Frames

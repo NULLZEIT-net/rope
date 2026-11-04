@@ -46,8 +46,13 @@ class Participant:
     role = None
 
     def __init__(self, participant, operation, hub_host, hub_port=DEFAULT_PORT, timeout_s=10.0, backoff=(1.0, 10.0),
-                 mailbox_root=None, on_message=None, poll_s=0.5, state_dir=None, on_delivery=None):
+                 mailbox_root=None, on_message=None, poll_s=0.5, state_dir=None, on_delivery=None, ssl=None,
+                 server_hostname=None):
         self.participant = participant
+        # Optional TLS (spec 14.1): an ssl.SSLContext prepared by the application (certificates, verification).
+        # The frames inside are unchanged; server_hostname overrides the name checked against the hub's certificate.
+        self.ssl = ssl
+        self.server_hostname = server_hostname
         self._roster_path = os.path.join(state_dir, "participants.json") if state_dir else None
         self._roster_lock = threading.Lock()    # a greeting and a medium import may learn the list at the same time
         self._activity = Activity()             # own disk writes (participant list, a source's state)
@@ -160,7 +165,9 @@ class Participant:
             delay = min(delay * 2, self.backoff[1])
 
     async def _session(self):
-        reader, writer = await asyncio.wait_for(asyncio.open_connection(*self.hub), self.timeout_s)
+        tls = {} if self.ssl is None else dict(ssl=self.ssl, server_hostname=self.server_hostname or self.hub[0],
+                                                  ssl_handshake_timeout=self.timeout_s)
+        reader, writer = await asyncio.wait_for(asyncio.open_connection(*self.hub, **tls), self.timeout_s)
         ch = Channel(reader, writer, send_timeout_s=self.timeout_s)
         tasks = []
         try:

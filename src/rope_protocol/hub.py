@@ -45,7 +45,8 @@ class Hub:
 
     def __init__(self, root, participants, operation, hub_id="hub", host="127.0.0.1", port=DEFAULT_PORT,
                  heartbeat_s=2.0, timeout_s=10.0, on_stream_checked=None, block_size=BLOCK_SIZE,
-                 segment_bytes=256 * 1024, window=8, poll_s=0.5, zlib_level=1, hub_name=None, on_message=None):
+                 segment_bytes=256 * 1024, window=8, poll_s=0.5, zlib_level=1, hub_name=None, on_message=None,
+                 ssl=None):
         self.roster = roster.parse(participants, hub_id, hub_name)
         self.store = StreamStore(root)
         self._media_have_path = os.path.join(os.path.abspath(root), "media_have.json")
@@ -65,6 +66,7 @@ class Hub:
         self.timeout_s = timeout_s
         self.on_stream_checked = on_stream_checked
         self.on_message = on_message                   # (meta, body) of messages addressed to the hub itself (spec 8.5)
+        self.ssl = ssl                                 # optional server-side ssl.SSLContext (spec 14.1)
         self.block_size = block_size
         self.segment_bytes = segment_bytes
         self.window = window
@@ -80,7 +82,8 @@ class Hub:
 
     async def start(self):
         try:
-            self._server = await asyncio.start_server(self._accept, self.host, self.port)
+            tls = {} if self.ssl is None else dict(ssl=self.ssl, ssl_handshake_timeout=self.timeout_s)
+            self._server = await asyncio.start_server(self._accept, self.host, self.port, **tls)
         except OSError as e:
             raise OSError(e.errno, "ROPE hub cannot listen on %s port %d: %s" % (self.host, self.port, e.strerror)) \
                 from None
