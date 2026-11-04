@@ -8,7 +8,7 @@ link simulator for tests (``rope_protocol.linksim``) and streams from sources vi
 with names and a stream selection per consumer (``rope_protocol.roster``).
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 #: Protocol version announced in the greeting (spec 14.5). Increase on incompatible changes.
 PROTOCOL_VERSION = 1

@@ -2,6 +2,14 @@
 
 Each entry: date, status (**decided** / **proposed**), reason.
 
+### 2026-11-04 – Published on PyPI (decided)
+- **First release on PyPI as 0.1.1** (`rope-protocol`). An early release makes the package installable by name and
+  gives versions a fixed meaning; the README and the alpha status say that interfaces may still change.
+- **Trusted publishing** from GitHub Actions (`.github/workflows/release.yml`): no token or password in the repository.
+  TestPyPI first; PyPI only from a tag `v*` and after the maintainer's approval in the `pypi` environment.
+- **0.1.1, not 0.1.0:** the tag `v0.1.0` points to a README with relative links that do not work on PyPI; the code is
+  the same.
+
 ### 2026-10-26 – Block repair over offline media (proposed)
 - **Same frames as on the network** (`STREAM_CHECK`, `BLOCK_SUMS`, `SEGMENT` `repair`, `STREAM_END`), carried in
   bundles. Without it, a stream whose header changed after the data left would never be verified when only sticks

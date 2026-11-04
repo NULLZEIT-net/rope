@@ -7,7 +7,6 @@ finished → **Done** (date, short description; details in `docs/`).
 _(see `docs/ideas.md`)_
 
 ## Backlog
-- [ ] **Packaging** as `rope-protocol` on PyPI (check name availability first).
 - [ ] **Heartbeat and timeout for radio links:** configurable at the hub (done 2026-11-02); measure on a real radio
       network before fixing the defaults (spec §9).
 - [ ] Resolve the open points listed at the end of `docs/spec.md`.
@@ -18,6 +17,7 @@ _(see `docs/ideas.md`)_
 ## In progress
 
 ## Done
+- 2026-11-04 Packaging: `rope-protocol` on PyPI with trusted publishing (`.github/workflows/release.yml`), version 0.1.1, `CHANGELOG.md`.
 - 2026-11-02 Version 0.1.0 (first version for an application); `Source.add_stream` adds a stream while running
   (spec §8.2); messages to the hub itself reach the hub application (spec §8.5).
 - 2026-11-02 Test bench, rest (spec §13): hub process killed hard twice during a transfer; opt-in soak over many

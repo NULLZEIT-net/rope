@@ -22,6 +22,8 @@ small, closed, offline groups. Specification: `docs/spec.md`. Package `rope-prot
   once.
 - **Never block the producer:** no unbounded buffers, timeouts on every network call, no file locks on source files.
 - Decisions go to `docs/decisions.md` (date, decided/proposed, reason); ideas to `docs/ideas.md`; tasks to `TASKS.md`.
+- Every user-visible change goes under `## [Unreleased]` in `CHANGELOG.md` in the same pull request; a release moves
+  these entries under its version.
 - Files use LF line endings and UTF-8 without BOM.
 
 ## Workflow
