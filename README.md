@@ -81,7 +81,7 @@ python -m pip install rope-protocol
 
 The package is named `rope-protocol` (import `rope_protocol`), because the name `rope` on PyPI belongs to a
 well-known refactoring library. Versions and changes: [CHANGELOG.md](https://github.com/d-fankhauser/rope/blob/main/CHANGELOG.md). While ROPE is in early
-development, pin the version you tested with (e.g. `rope-protocol==0.1.1`).
+development, pin the version you tested with (e.g. `rope-protocol==0.1.2`).
 
 For development:
 

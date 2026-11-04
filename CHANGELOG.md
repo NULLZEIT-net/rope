@@ -7,6 +7,8 @@ The package version is `rope_protocol.__version__`; the wire protocol has its ow
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-04
+
 ### Added
 - Optional TLS (spec 14.1): `Hub(..., ssl=...)` and every participant (`Source`, `Consumer`, `Recipient`) with
   `ssl=...` and `server_hostname=...` take an `ssl.SSLContext` prepared by the application, e.g. for mutual TLS with
@@ -47,6 +49,7 @@ First release (tag `v0.1.0`), wire protocol version 1. Development started on 20
   participant or hub at every step, a hard kill of the hub process, and a soak test over many random seeds. It found
   several real defects before the release; each is covered by a test that fails without the fix.
 
-[Unreleased]: https://github.com/d-fankhauser/rope/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/d-fankhauser/rope/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/d-fankhauser/rope/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/d-fankhauser/rope/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/d-fankhauser/rope/releases/tag/v0.1.0
