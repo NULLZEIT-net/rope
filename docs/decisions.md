@@ -2,6 +2,14 @@
 
 Each entry: date, status (**decided** / **proposed**), reason.
 
+### 2026-11-04 – Messages to the hub: told again until taken (decided)
+- **Why:** with many participants every reply to the hub matters; before, a message the hub application could not
+  take (an error, a full disk, a stop at the wrong moment) stayed in the hub's store but was never told again.
+- **How:** a flag `hub_told` in the message's custody state, set after `on_message` returns; a loop tells untold
+  messages again. At least once rather than exactly once - noting after telling cannot be atomic with the
+  application's own write; ids make repeats harmless.
+- **Found on the way:** messages to the hub from an offline medium were told twice; fixed and tested.
+
 ### 2026-11-04 – Optional TLS through an ssl.SSLContext (decided)
 - **The application brings the context** (`ssl=` on the hub and on every participant): ROPE stays free of key
   management and policies (which CA, client certificates, minimum version), and the standard library's `ssl` covers

@@ -46,7 +46,7 @@ class Hub:
     def __init__(self, root, participants, operation, hub_id="hub", host="127.0.0.1", port=DEFAULT_PORT,
                  heartbeat_s=2.0, timeout_s=10.0, on_stream_checked=None, block_size=BLOCK_SIZE,
                  segment_bytes=256 * 1024, window=8, poll_s=0.5, zlib_level=1, hub_name=None, on_message=None,
-                 ssl=None):
+                 ssl=None, retell_s=10.0):
         self.roster = roster.parse(participants, hub_id, hub_name)
         self.store = StreamStore(root)
         self._media_have_path = os.path.join(os.path.abspath(root), "media_have.json")
@@ -67,6 +67,11 @@ class Hub:
         self.on_stream_checked = on_stream_checked
         self.on_message = on_message                   # (meta, body) of messages addressed to the hub itself (spec 8.5)
         self.ssl = ssl                                 # optional server-side ssl.SSLContext (spec 14.1)
+        # messages to the hub that its application has not taken yet (on_message raised, or the hub stopped before
+        # it was noted) are told again every retell_s seconds and at the start (spec 8.5)
+        self.retell_s = retell_s
+        self._hub_told = set()                         # told in this run (the flag on disk may still be on its way)
+        self._retell_task = None
         self.block_size = block_size
         self.segment_bytes = segment_bytes
         self.window = window
@@ -88,12 +93,28 @@ class Hub:
             raise OSError(e.errno, "ROPE hub cannot listen on %s port %d: %s" % (self.host, self.port, e.strerror)) \
                 from None
         self.port = self._server.sockets[0].getsockname()[1]
+        self._retell_task = asyncio.ensure_future(self._retell_loop())
         return self
+
+    async def _retell_loop(self):
+        while not self._stopped:
+            for rec in self.messages.select(lambda r: r["state"].get("hub_told") is False):
+                if self._stopped:
+                    return
+                self._to_hub(rec["meta"])
+            await asyncio.sleep(self.retell_s)
+
+    def untold(self):
+        """Number of messages to the hub its application has not taken yet (for a status display)."""
+        return len([r for r in self.messages.select(lambda r: r["state"].get("hub_told") is False)
+                    if r["meta"]["id"] not in self._hub_told])
 
     async def stop(self):
         # A connection accepted while stopping must not live on: a stopped hub would keep serving it, writing to the
         # same folders as a new hub but unaware of its messages (found by the test bench, spec 13).
         self._stopped = True
+        if self._retell_task is not None:
+            self._retell_task.cancel()
         if self._server:
             self._server.close()
         for _ in range(3):
@@ -308,17 +329,27 @@ class Hub:
     def _custody_state(self, sender, to):
         """State of a new message at the hub: known recipients pending, the hub itself delivered (its application
         gets the message), the others unknown (spec 8.5)."""
-        return dict(pending=[p for p in dict.fromkeys(to) if p in self.participants and p != sender],
-                    delivered=[self.hub_id] if self.hub_id in to else [],
-                    unknown=[p for p in dict.fromkeys(to) if p not in self.participants and p != self.hub_id])
+        state = dict(pending=[p for p in dict.fromkeys(to) if p in self.participants and p != sender],
+                     delivered=[self.hub_id] if self.hub_id in to else [],
+                     unknown=[p for p in dict.fromkeys(to) if p not in self.participants and p != self.hub_id])
+        if self.hub_id in to:
+            state["hub_told"] = False                  # until the application has taken it
+        return state
 
     def _to_hub(self, meta):
-        """Hand a new message addressed to the hub to the application (once: only new messages come here)."""
-        if self.hub_id in meta["to"] and self.on_message is not None:
-            try:
-                self.on_message(dict(meta), self.messages.body(meta["id"]))
-            except Exception:                          # the application's error must never break the session
-                log.exception("on_message failed for message %s", meta["id"])
+        """Hand a message addressed to the hub to the application, in the hub's event loop - one message after the
+        other, also with many participants. Only when on_message returns is the message noted as told; if it raises,
+        it is told again later (``retell_s``) and after a restart. A restart between telling and noting can tell a
+        message twice: the application should treat messages by their id (at least once, spec 8.5)."""
+        if self.hub_id not in meta["to"] or self.on_message is None or meta["id"] in self._hub_told:
+            return
+        try:
+            self.on_message(dict(meta), self.messages.body(meta["id"]))
+        except Exception:                              # the application's error must never break the session
+            log.exception("on_message failed for message %s, telling it again later", meta["id"])
+            return
+        self._hub_told.add(meta["id"])
+        asyncio.ensure_future(self.messages.activity.run(self.messages.update, meta["id"], hub_told=True))
 
     def _new_message(self, meta, state):
         self._to_hub(meta)
@@ -412,10 +443,7 @@ class Hub:
                 else:
                     media.import_stream_end(self.store, sender, f, report, skipped)
             elif f.type == F.FrameType.MESSAGE:
-                known = self.messages.get(m["id"]) is not None
                 media.import_message(self.messages, f, report, self._custody_state(sender, m["to"]), sender)
-                if not known and self.messages.get(m["id"]) is not None:
-                    self._to_hub(m)
             elif f.type == F.FrameType.MESSAGE_ACK:
                 self._delivered(m["id"], sender)
                 report.message_acks.append(m["id"])
