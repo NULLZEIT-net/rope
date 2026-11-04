@@ -39,9 +39,11 @@ def test_many_participants_are_told_one_after_the_other(tmp_path):
             await _until(lambda: len(told) == 60)
             await asyncio.sleep(0.3)
             assert len(told) == 60 and not overlap
-            for s in srcs:                              # per participant in the order sent
-                mine = [b for who, b in told if who == s.participant]
-                assert mine == [b"%s %d" % (s.participant.encode(), i) for i in range(20)]
+            # every message once; the order is not promised (spec 8.5: messages may arrive in any order - within
+            # one millisecond the outbox orders by id)
+            for s in srcs:
+                mine = sorted(b for who, b in told if who == s.participant)
+                assert mine == sorted(b"%s %d" % (s.participant.encode(), i) for i in range(20))
         finally:
             for s in srcs:
                 await s.stop()
