@@ -109,6 +109,7 @@ ROPE's default port is **47310**; applications can override it.
 | `docs/ideas.md` | Ideas not yet planned |
 | `docs/images/` | Logo and symbol (SVG; light and dark variant) |
 | `TASKS.md` | Task board |
+| `CHANGELOG.md` | Changes per version |
 | `src/rope_protocol/` | Package: frame codec (`frames.py`), link simulator (`linksim.py`), durable store (`store.py`), sending and receiving side of streams (`sender.py`, `receiver.py`), messages (`messages.py`), offline media (`media.py`), participant list (`roster.py`), participants (`hub.py`, `source.py`, `consumer.py`, `recipient.py`, base `participant.py`) |
 | `tests/` | Unit tests and the fault-injection test bench (`framefault.py`, `test_faults.py`) |
 | `AGENTS.md` | Guidelines for contributors and coding agents |
