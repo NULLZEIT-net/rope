@@ -200,8 +200,13 @@ All numbers are **proposed** starting values until measured.
 - Each recipient acknowledges after storing it. The hub tracks "delivered" or "pending" per recipient.
 - Messages take priority over stream segments.
 - A message may be addressed to the **hub itself** (its identifier as recipient, **decided**): it is for the
-  application running the hub (`Hub(on_message=...)`), which gets it once; for the delivery report it counts as
-  delivered to the hub. Example: a source tells the hub application which device it is.
+  application running the hub (`Hub(on_message=...)`); for the delivery report it counts as delivered to the hub.
+  Example: a source tells the hub application which device it is.
+  **Decided (2026-11-04):** the hub tells its application one message after the other (in its event loop), also with
+  many participants. A message counts as told only when `on_message` returns; if it raises, or the hub stops first,
+  the message is told again later (every `retell_s`, default 10 s) and after a restart. A restart between telling and
+  noting may tell a message twice, so the application treats messages by their id (at least once). `Hub.untold()`
+  counts the messages not taken yet. A message from an offline medium is told once (before, twice).
 - Duplicates are detected by id and shown only once.
 
 **First implementation (2026-10-26, proposed):**

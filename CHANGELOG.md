@@ -14,6 +14,13 @@ The package version is `rope_protocol.__version__`; the wire protocol has its ow
   `ssl=...` and `server_hostname=...` take an `ssl.SSLContext` prepared by the application, e.g. for mutual TLS with
   certificates on both sides. Without it nothing changes. The frames are the same with and without TLS.
 
+### Changed
+- Messages to the hub itself are told to the hub application again when `on_message` raised or the hub stopped
+  before noting them (every `retell_s`, default 10 s, and after a restart); `Hub.untold()` counts them (spec 8.5).
+
+### Fixed
+- A message to the hub that came on an offline medium was told to the hub application twice.
+
 ## [0.1.1] - 2026-11-04
 
 First release on PyPI (`pip install rope-protocol`). No change to the code or the wire protocol.
