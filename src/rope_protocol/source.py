@@ -140,7 +140,9 @@ class Source(Participant):
 
     async def _refresh(self):
         changed = False
-        for s in self.streams.values():
+        # a copy: add_stream may run while this waits for a file size (it did on CI: "dictionary changed size during
+        # iteration" ended the session and the source reconnected)
+        for s in list(self.streams.values()):
             changed |= s.apply(await asyncio.to_thread(_size, s.path))
         if changed:
             await self._save()
