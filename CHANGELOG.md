@@ -7,6 +7,11 @@ The package version is `rope_protocol.__version__`; the wire protocol has its ow
 
 ## [Unreleased]
 
+### Added
+- Optional TLS (spec 14.1): `Hub(..., ssl=...)` and every participant (`Source`, `Consumer`, `Recipient`) with
+  `ssl=...` and `server_hostname=...` take an `ssl.SSLContext` prepared by the application, e.g. for mutual TLS with
+  certificates on both sides. Without it nothing changes. The frames are the same with and without TLS.
+
 ## [0.1.1] - 2026-11-04
 
 First release on PyPI (`pip install rope-protocol`). No change to the code or the wire protocol.

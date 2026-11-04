@@ -2,6 +2,14 @@
 
 Each entry: date, status (**decided** / **proposed**), reason.
 
+### 2026-11-04 – Optional TLS through an ssl.SSLContext (decided)
+- **The application brings the context** (`ssl=` on the hub and on every participant): ROPE stays free of key
+  management and policies (which CA, client certificates, minimum version), and the standard library's `ssl` covers
+  everything a closed group needs, including mutual TLS.
+- **Nothing changes inside:** same frames, same resumption; a failed handshake is treated like a lost connection.
+- **Tests make their certificates at run time** with the `openssl` tool (skipped without it), so no key is stored in
+  the repository.
+
 ### 2026-11-04 – Published on PyPI (decided)
 - **First release on PyPI as 0.1.1** (`rope-protocol`). An early release makes the package installable by name and
   gives versions a fixed meaning; the README and the alpha status say that interfaces may still change.
