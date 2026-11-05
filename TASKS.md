@@ -17,6 +17,8 @@ _(see `docs/ideas.md`)_
 ## In progress
 
 ## Done
+- 2026-11-04 Version 0.1.2: optional TLS (spec 14.1, the application passes `ssl.SSLContext` objects); messages to the
+  hub told again until the hub application took them (spec 8.5); fixes in `CHANGELOG.md`.
 - 2026-11-04 Packaging: `rope-protocol` on PyPI with trusted publishing (`.github/workflows/release.yml`), version 0.1.1, `CHANGELOG.md`.
 - 2026-11-02 Version 0.1.0 (first version for an application); `Source.add_stream` adds a stream while running
   (spec §8.2); messages to the hub itself reach the hub application (spec §8.5).
