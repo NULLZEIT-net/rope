@@ -8,6 +8,10 @@ The package version is `rope_protocol.__version__`; the wire protocol has its ow
 ## [Unreleased]
 
 ### Added
+- Announced operation (spec 14.5): `Hub(..., announce_operation=True, operation_name=...)` names its operation in
+  the `REJECT` for a participant of another operation (optional keys `operation`, `operation_name`). The
+  participant exposes them as `rejected.operation` and `rejected.operation_name` and never switches on its own,
+  so an application can ask its user and greet again. Off by default; older peers ignore the keys.
 - Conformance suite (`conformance/`, #32, proposed): a harness that tests a participant implementation over TCP
   through a small JSON-lines adapter, against the reference hub and the link simulator. It has 7 scenarios:
   streams bit for bit (also with disconnects and a restart), reject, relay, messages exactly once. The Python
