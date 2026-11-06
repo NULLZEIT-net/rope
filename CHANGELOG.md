@@ -59,7 +59,7 @@ First release (tag `v0.1.0`), wire protocol version 1. Development started on 20
   participant or hub at every step, a hard kill of the hub process, and a soak test over many random seeds. It found
   several real defects before the release; each is covered by a test that fails without the fix.
 
-[Unreleased]: https://github.com/d-fankhauser/rope/compare/v0.1.2...HEAD
-[0.1.2]: https://github.com/d-fankhauser/rope/compare/v0.1.1...v0.1.2
-[0.1.1]: https://github.com/d-fankhauser/rope/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/d-fankhauser/rope/releases/tag/v0.1.0
+[Unreleased]: https://github.com/NULLZEIT-net/rope/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/NULLZEIT-net/rope/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/NULLZEIT-net/rope/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/NULLZEIT-net/rope/releases/tag/v0.1.0
