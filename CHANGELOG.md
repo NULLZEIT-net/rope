@@ -7,6 +7,10 @@ The package version is `rope_protocol.__version__`; the wire protocol has its ow
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-11-07
+
+First release from the `NULLZEIT-net` organisation. Wire format unchanged (`PROTOCOL_VERSION` 1).
+
 ### Added
 - Announced operation (spec 14.5): `Hub(..., announce_operation=True, operation_name=...)` names its operation in
   the `REJECT` for a participant of another operation (optional keys `operation`, `operation_name`). The
