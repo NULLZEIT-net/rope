@@ -13,6 +13,9 @@ _(see `docs/ideas.md`)_
 
 
 - [ ] **Offline media:** help for clearing sticks (spec §8.6, open point).
+- [ ] **Implementations in other languages** (#33): first #31 spec 1.0 (freeze the wire format) and #32
+      language-independent conformance suite; then Rust, Java/Kotlin, Node.js (participant roles first) and an
+      Ada/SPARK core with proofs.
 
 ## In progress
 

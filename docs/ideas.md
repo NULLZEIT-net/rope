@@ -7,7 +7,7 @@ are not proposed again.
 - Discovery of the hub by broadcast on the local network (spec 8.1, optional).
 - Standby hub that takes over when the primary hub fails.
 - Bandwidth limit per participant, configurable in the participant list.
-- **Implementations in other languages** (2026-11-06, maintainer): Rust, Java/Kotlin, Node.js and Ada, once ROPE has
+- **Implementations in other languages** (2026-11-06, maintainer; planned in #33, prerequisites #31 and #32): Rust, Java/Kotlin, Node.js and Ada, once ROPE has
   reached a stable state. Two independent implementations that interoperate are the real test of the spec.
   - Prerequisites:
     1. Spec 1.0, with nothing "proposed" left in the wire format.
