@@ -35,6 +35,7 @@ small, closed, offline groups. Specification: `docs/spec.md`. Package `rope-prot
 ## Commands
 
 ```
-python -m pyflakes src tests
+python -m pyflakes src tests conformance
 python -m pytest
+python conformance/harness.py   # conformance suite (#32), also part of pytest
 ```
