@@ -21,7 +21,7 @@ _IDENTIFIER = re.compile(r"[A-Za-z0-9._-]{1,64}\Z")
 Entry = namedtuple("Entry", "role name streams")
 
 
-def _check_name(what, name):
+def check_name(what, name):
     if not isinstance(name, str) or not name.strip() or len(name) > MAX_NAME or not name.isprintable():
         raise ValueError("%s: the name must be 1-%d printable characters, got %r" % (what, MAX_NAME, name))
 
@@ -31,7 +31,7 @@ def parse(participants, hub_id, hub_name=None):
     if not _IDENTIFIER.match(hub_id or ""):
         raise ValueError("hub identifier %r: 1-64 characters from A-Z a-z 0-9 . _ -" % (hub_id,))
     if hub_name is not None:
-        _check_name("the hub", hub_name)
+        check_name("the hub", hub_name)
     out = {}
     for ident, spec in dict(participants).items():
         if not isinstance(ident, str) or not _IDENTIFIER.match(ident):
@@ -49,7 +49,7 @@ def parse(participants, hub_id, hub_name=None):
         if role not in ROLES:
             raise ValueError("participant %s: role must be one of %s, got %r" % (ident, ", ".join(ROLES), role))
         name = spec.get("name", ident)
-        _check_name("participant %s" % ident, name)
+        check_name("participant %s" % ident, name)
         streams = spec.get("streams")
         if streams is not None:
             if role != "consumer":
