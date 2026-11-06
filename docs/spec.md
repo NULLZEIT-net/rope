@@ -5,9 +5,11 @@
 
 # ROPE – Protocol Specification
 
-**Status: draft 1.** This document describes the goals, model and behaviour of ROPE, and since draft 1 the wire format
-([§14](#14-wire-format)). The wire format is **proposed**: it may change until the first release, after measurements
-and the first implementation – see [Open points](#open-points).
+**Status: draft 1, on the way to 1.0.** This document describes the goals, model and behaviour of ROPE, and since
+draft 1 the wire format ([§14](#14-wire-format)). **Decided 2026-11-07 (#31):** the wire format of §14 and media
+format 1 (§8.6) are frozen for spec 1.0 as they stand; values that are a sender's or hub's choice are only
+recommended (§14.8); compatibility follows §14.9. Spec 1.0 is released after field experience; until then only
+corrections found there change these parts.
 
 Every statement is marked as one of:
 
@@ -252,7 +254,9 @@ All numbers are **proposed** starting values until measured.
 Removable media (e.g. a USB stick) can carry the same segments and messages. Import follows the same rules: check the
 committed offset, ignore duplicates, report damaged items. Network and media may be mixed.
 
-**First implementation (2026-10-26, proposed):**
+**Media format 1 (decided for spec 1.0, 2026-11-07, #31):** the bundle layout and content below. Another
+implementation must read and write the same media; `bundle.json` carries the format number. First implemented
+2026-10-26:
 
 - **Bundle:** one export writes one bundle. It holds the frames the exporter would send over the network, in the
   wire format of §14:
@@ -494,7 +498,8 @@ Limits of the simulation:
 
 ## 14. Wire format
 
-Everything in this section is **proposed** (draft 1).
+**Decided for spec 1.0 (2026-11-07, #31):** the frame layout, frame types, keys, values, greeting and the frames of
+the final check and block repair below. Values marked as recommended in §14.8 are not part of the wire format.
 
 ### 14.1 Transport
 
@@ -668,14 +673,43 @@ Without `repair`, a segment below the committed offset is a duplicate and is not
 never changes stored data. A `STREAM_CHECK` that does not answer an open `STREAM_END` of the same session is logged
 and ignored, and so are `BLOCK_SUMS` that nobody waits for: a stray answer never restarts a repair. Streams are kept per participant, so only a stream's own sender can repair it.
 
-Status: **proposed** (block size, the half rule and the 3 rounds are assumptions until measured).
+Status: the frames and their keys are **decided** for 1.0. Block size, the half rule and the 3 rounds are a
+sender's choice (recommended values, §14.8), assumptions until measured.
+
+### 14.8 Recommended values (not part of the wire format)
+
+**Decided 2026-11-07 (#31):** the following are choices of the sender or the hub. A peer must work with any value
+within the limits of §14.2–14.4. The values given are recommended starting points, **assumed** until measured.
+
+| What | Recommended | Where it matters |
+|---|---|---|
+| Heartbeat / timeout | 2 s / 10 s (may be too short for radio, §9) | the hub decides and sends both in `WELCOME`; participants follow |
+| Segment size | about 1 s of data, at most 256 KiB | sender; receivers accept any segment up to the blob limit |
+| Compression | zlib at a low level, only if smaller | sender; receivers decode any valid zlib stream (§14.4) |
+| Block size for repair | 1 MiB | carried in `BLOCK_SUMS`; the receiver chooses |
+| New generation instead of repair | more than half of the blocks differ | sender |
+| Repair rounds | stop after 3 | sender |
+| Catch-up order | streams in name order, each from its committed offset | sender; receivers accept any order |
+| Reconnect back-off | 1 s doubling up to 10 s, with jitter | participant |
+
+### 14.9 Compatibility (decided 2026-11-07)
+
+- **Within 1.x** (no new `PROTOCOL_VERSION`): new optional meta keys, new reject and error codes, new extension
+  frame types (`0x80`–`0xFF`), new recommended values. Receivers ignore unknown keys and extension types and
+  accept unknown codes as strings, so older and newer peers keep working together.
+- **Needs a new protocol version:** a changed meaning or layout of an existing key or frame, a new core frame type
+  (`0x00`–`0x7F`), new required keys, changed limits. The greeting (§14.5) then picks the highest common version.
+- **Media format:** the same rules apply to `bundle.json` and its `format` number.
+- Every change is listed in `CHANGELOG.md`; test vectors (`docs/vectors/frames.json`) are extended, never changed
+  silently.
 
 ## Open points
 
 - [x] Wire format: framing, encoding of control messages, checksum algorithm, version negotiation (draft 1, §14,
       proposed).
 - [x] Default TCP port: 47310, overridable (§14.1).
-- [ ] Message body size above 1 MiB: split into several frames or forbid (draft 1: at most one blob of 1 MiB).
+- [x] Message body size above 1 MiB: **forbidden in 1.0** (decided 2026-11-07): a message body is at most 1 MiB;
+      larger content is split by the application. A later 1.x may add multi-frame bodies as an extension.
 - [ ] Network: fixed hub address or discovery; other users on the same network.
 - [ ] Bandwidth and typical outages of the radio links (how often, how long).
 - [ ] Catch-up order: current stream first, or strictly in order. First implementation: streams in name order,

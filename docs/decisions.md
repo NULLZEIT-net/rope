@@ -2,6 +2,19 @@
 
 Each entry: date, status (**decided** / **proposed**), reason.
 
+### 2026-11-07 – Spec 1.0: what is frozen (decided)
+- **Frozen for 1.0:** the wire format of §14 as it stands (frame layout, types, keys, values, greeting, final
+  check and block repair frames) and **media format 1** (§8.6), so that other implementations can read and write
+  the same frames and media (#31, #33).
+- **Message bodies above 1 MiB are forbidden in 1.0**; the application splits larger content. Multi-frame bodies
+  may come in 1.x as an extension. Reason: get 1.0 stable first, extend later.
+- **Recommended values only** (§14.8): heartbeat/timeout defaults, segment size, compression level, block size,
+  repair rules, catch-up order, back-off. They are sender or hub choices; peers must accept any valid value.
+- **Compatibility rules** (§14.9): additions within 1.x, incompatible changes need a new protocol version.
+- **Out of 1.0:** hub discovery, standby hub, status tool, help for clearing media.
+- **Still to do before releasing 1.0:** MUST/SHOULD wording for the frozen parts, field experience over real radio
+  links.
+
 ### 2026-11-06 – Hub may announce its operation when it rejects a wrong one (decided)
 - **Why:** an application may set up a participant before it knows the operation and wants to offer "join this
   operation?" once the hub answers. Until now the hub's operation was only in the free text of `REJECT`, which is
