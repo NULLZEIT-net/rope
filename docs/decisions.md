@@ -2,6 +2,17 @@
 
 Each entry: date, status (**decided** / **proposed**), reason.
 
+### 2026-11-06 – Hub may announce its operation when it rejects a wrong one (decided)
+- **Why:** an application may set up a participant before it knows the operation and wants to offer "join this
+  operation?" once the hub answers. Until now the hub's operation was only in the free text of `REJECT`, which is
+  meant for people and may change.
+- **How:** optional keys `operation` and `operation_name` in `REJECT` with `wrong_operation` (spec 14.5); the
+  participant only exposes them. Compatible: unknown keys are already ignored.
+- **Off by default:** anyone who reaches the hub would learn the identifier. The identifier grants nothing on its
+  own (the participant list decides), but the application should turn it on deliberately.
+- **Alternatives considered:** parsing the free text (fragile), a second service on another port (more to set up
+  and secure).
+
 ### 2026-11-04 – Messages to the hub: told again until taken (decided)
 - **Why:** with many participants every reply to the hub matters; before, a message the hub application could not
   take (an error, a full disk, a stop at the wrong moment) stayed in the hub's store but was never told again.

@@ -397,6 +397,9 @@ is the job of the layers below and around ROPE (**decided**: ROPE stays simple; 
   open or shared networks, no port forwarding to the internet.
 - **Devices:** current operating system updates, endpoint protection (virus scanner), user accounts without
   administrator rights for daily work, disk encryption where devices can be lost.
+- **Announced operation (§14.5):** a hub configured to announce its operation tells its identifier to anyone who
+  reaches it with a wrong one. The identifier alone grants nothing (the participant list still decides), but it is
+  off by default; turn it on only in closed networks or with TLS (§14.1).
 - **Offline media (§8.6):** bundles on removable media are not encrypted either. Treat the media like the data on them
   (keep them with the team, wipe or encrypt them according to the deployment's rules).
 
@@ -601,6 +604,11 @@ Optional keys:
    holds as a receiver: `[{"stream": …, "gen": …, "committed": …}]` (empty for a pure source).
 2. The hub picks the highest common version and answers `WELCOME` with `version`. `have` lists what the hub holds from
    this participant. Otherwise it answers `REJECT` and closes the connection.
+   **Announced operation (decided, added 2026-11-06):** with code `wrong_operation` a hub that is configured to do so
+   adds `operation` (its operation identifier) and optionally `operation_name` (a name for people, 1-100
+   characters) to `REJECT`. Both keys are optional; older participants ignore them. A participant never switches
+   to the announced operation on its own: the application may offer it to its user and greet again. Hubs do not
+   announce by default, because anyone who reaches the hub learns the identifier (§11).
 3. Every later frame carries the chosen version in byte 2. The 12-byte header and the frames `HELLO`, `WELCOME` and
    `REJECT` keep their layout in all versions, so that version 1 can always reject a newer participant with a
    readable reason.

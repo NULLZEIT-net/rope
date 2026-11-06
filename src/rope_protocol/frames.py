@@ -69,6 +69,8 @@ REQUIRED = {
 
 ROLES = ("source", "consumer", "recipient")
 ENCODINGS = ("none", "zlib")
+#: Longest announced operation name in a REJECT (spec 14.5), same limit as participant names (spec 7).
+MAX_OPERATION_NAME = 100
 CODES = ("unknown_participant", "wrong_operation", "version", "role", "busy", "bad_frame", "too_large", "unknown_type",
          "storage", "internal")
 
@@ -227,6 +229,12 @@ def validate(frame):
             raise FrameError("bad_frame", "%s must be a non-negative integer" % k)
     if ftype in (FrameType.REJECT, FrameType.ERROR) and not isinstance(meta["text"], str):
         raise FrameError("bad_frame", "text must be a string")
+    if ftype is FrameType.REJECT:                       # optional, announced operation (spec 14.5)
+        if "operation" in meta and not (isinstance(meta["operation"], str) and _IDENTIFIER.match(meta["operation"])):
+            raise FrameError("bad_frame", "operation is not a valid identifier")
+        if "operation_name" in meta and not (isinstance(meta["operation_name"], str)
+                                             and 0 < len(meta["operation_name"]) <= MAX_OPERATION_NAME):
+            raise FrameError("bad_frame", "operation_name must be 1-%d characters" % MAX_OPERATION_NAME)
     if ftype is FrameType.HELLO:
         if meta["role"] not in ROLES:
             raise FrameError("bad_frame", "unknown role %r" % (meta["role"],))

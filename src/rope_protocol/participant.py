@@ -20,12 +20,17 @@ log = logging.getLogger("rope.participant")
 
 
 class Rejected(Exception):
-    """The hub refused this participant (REJECT); ``code`` and ``text`` say why, in plain language."""
+    """The hub refused this participant (REJECT); ``code`` and ``text`` say why, in plain language.
 
-    def __init__(self, code, text):
+    With ``wrong_operation`` a hub may announce its ``operation`` and ``operation_name`` (spec 14.5); both are None
+    otherwise. The participant never switches on its own - the application asks its user and starts anew."""
+
+    def __init__(self, code, text, operation=None, operation_name=None):
         super().__init__(text)
         self.code = code
         self.text = text
+        self.operation = operation
+        self.operation_name = operation_name
 
 
 class Participant:
@@ -178,7 +183,8 @@ class Participant:
                                                           have=have)))
             first = await ch.recv(self.timeout_s)
             if first.type == F.FrameType.REJECT:
-                raise Rejected(first.meta["code"], first.meta["text"])
+                raise Rejected(first.meta["code"], first.meta["text"], first.meta.get("operation"),
+                               first.meta.get("operation_name"))
             if first.type != F.FrameType.WELCOME:
                 raise F.FrameError("bad_frame", "expected WELCOME, got 0x%02x" % first.type)
             w = first.meta
