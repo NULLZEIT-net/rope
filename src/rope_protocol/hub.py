@@ -41,13 +41,19 @@ class Hub:
     """``participants``: {identifier: role} or {identifier: {"role", "name", "streams"}} (``rope_protocol.roster``,
     spec 7); ValueError with a plain-language reason if the list is not valid. ``hub_name`` is the hub's name for the
     operator. ``on_stream_checked(participant, stream, gen, result, path)`` is called after the final check of a
-    source's stream (spec 8.4)."""
+    source's stream (spec 8.4).
+
+    ``announce_operation``: when a participant greets with another operation, the ``REJECT`` names the hub's
+    ``operation`` and, if given, ``operation_name`` (a name for people), so that an application can offer to join it
+    (spec 14.5). Off by default: anyone who reaches the hub learns the operation identifier."""
 
     def __init__(self, root, participants, operation, hub_id="hub", host="127.0.0.1", port=DEFAULT_PORT,
                  heartbeat_s=2.0, timeout_s=10.0, on_stream_checked=None, block_size=BLOCK_SIZE,
                  segment_bytes=256 * 1024, window=8, poll_s=0.5, zlib_level=1, hub_name=None, on_message=None,
-                 ssl=None, retell_s=10.0):
+                 ssl=None, retell_s=10.0, announce_operation=False, operation_name=None):
         self.roster = roster.parse(participants, hub_id, hub_name)
+        if operation_name is not None:
+            roster.check_name("the operation", operation_name)
         self.store = StreamStore(root)
         self._media_have_path = os.path.join(os.path.abspath(root), "media_have.json")
         self._media_repairs_path = os.path.join(os.path.abspath(root), "media_repairs.json")
@@ -58,6 +64,8 @@ class Hub:
         self.operation = operation
         self.hub_id = hub_id
         self.hub_name = hub_name
+        self.announce_operation = bool(announce_operation)
+        self.operation_name = operation_name
         self.host = host
         self.port = port
         if not 0 < heartbeat_s or timeout_s < 2 * heartbeat_s:
@@ -157,7 +165,12 @@ class Hub:
             reason = self._check(m)
             if reason:
                 code, text = reason
-                await ch.send(F.Frame(F.FrameType.REJECT, {"code": code, "text": text}))
+                meta = {"code": code, "text": text}
+                if code == "wrong_operation" and self.announce_operation:
+                    meta["operation"] = self.operation          # spec 14.5: offered to join, never joined silently
+                    if self.operation_name is not None:
+                        meta["operation_name"] = self.operation_name
+                await ch.send(F.Frame(F.FrameType.REJECT, meta))
                 ch.abort()
                 return
             participant = m["participant"]
