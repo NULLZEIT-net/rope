@@ -10,6 +10,8 @@ _(see `docs/ideas.md`)_
 - [ ] **Heartbeat and timeout for radio links:** configurable at the hub (done 2026-11-02); measure on a real radio
       network before fixing the defaults (spec §9).
 - [ ] Resolve the open points listed at the end of `docs/spec.md`.
+- [ ] **Spec 1.0** (#31): frozen parts decided 2026-11-07 (§14, media format 1, §14.8, §14.9); still to do:
+      MUST/SHOULD wording for the frozen parts, field experience over real radio links, then release.
 
 
 - [ ] **Offline media:** help for clearing sticks (spec §8.6, open point).
