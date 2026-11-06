@@ -12,6 +12,8 @@ The package version is `rope_protocol.__version__`; the wire protocol has its ow
   the `REJECT` for a participant of another operation (optional keys `operation`, `operation_name`). The
   participant exposes them as `rejected.operation` and `rejected.operation_name` and never switches on its own,
   so an application can ask its user and greet again. Off by default; older peers ignore the keys.
+- Test vectors for every core frame type and for damaged frames in `docs/vectors/frames.json` (spec 14.6), for
+  other implementations; checked by `tests/test_vectors.py`.
 
 ## [0.1.2] - 2026-11-04
 
