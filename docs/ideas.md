@@ -15,6 +15,11 @@ are not proposed again.
        participant, using the test vectors (14.6) and the link simulator for faults.
     3. Field experience.
   - Suggested scope: participant roles first, while the hub stays the Python reference.
+  - Why these languages (maintainer):
+    - Rust is today's choice for systems programming where C/C++ was used.
+    - Java is still widely used in business software.
+    - Node.js is strong in the web world.
+    - Ada allows formal proofs and is still used in safety-critical systems.
   - Suggested order: Rust, then Java/Kotlin (Android), then Node.js.
   - Ada/SPARK: the core only (frames, checksums, resume logic) with formal proofs that no data is lost or duplicated.
   - Each port needs its own dependency rule (e.g. zlib is not in every standard library).
