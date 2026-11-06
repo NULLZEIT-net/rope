@@ -7,6 +7,10 @@ The package version is `rope_protocol.__version__`; the wire protocol has its ow
 
 ## [Unreleased]
 
+### Added
+- Test vectors for every core frame type and for damaged frames in `docs/vectors/frames.json` (spec 14.6), for
+  other implementations; checked by `tests/test_vectors.py`.
+
 ## [0.1.2] - 2026-11-04
 
 ### Added
