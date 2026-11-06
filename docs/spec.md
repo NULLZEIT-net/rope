@@ -634,6 +634,12 @@ empty blob:
 
 The last four bytes are the CRC-32 of the 31 bytes before them. `tests/test_frames.py` checks this vector.
 
+**All vectors (added 2026-11-06):** `docs/vectors/frames.json` holds at least one complete frame of every core
+type, with its meta, blob and – for encoded data – the raw bytes, plus damaged or illegal frames with the error
+code a receiver answers. It is meant for other implementations. Frames with a `zlib` blob are marked
+`encode_exact: false`: another zlib may compress differently, decoding must give the same raw bytes.
+`tests/test_vectors.py` checks the file against this implementation; `tests/make_vectors.py` writes it.
+
 ### 14.7 Final check and block repair
 
 Why: a recording program may change bytes it has already written, typically a header with counters at the end of a
