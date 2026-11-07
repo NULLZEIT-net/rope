@@ -38,6 +38,8 @@ An implementation provides a small program, the **adapter**:
 | `stop` | – | stop the participant, keep its state on disk (a later `start_*` with the same `dir` continues) |
 | `quit` | – | stop and end the process |
 
+The harness reads answers of up to 64 MiB per line, because `status` carries the message bodies.
+
 Timeouts: the harness's hub uses a heartbeat of 0.2 s and a timeout of 1 s. The adapter takes these from `WELCOME`
 like any participant. It should reconnect quickly, with a back-off of at most about 0.3 s, so that the suite stays fast.
 
@@ -48,10 +50,14 @@ like any participant. It should reconnect quickly, with a back-off of at most ab
 | `source_basic` | A growing file arrives bit for bit; the final check is `ok`; no second generation. |
 | `source_disconnects` | The same, through a slow link with two disconnects and a blackout. |
 | `source_restart` | The participant is stopped mid-transfer and started again with the same state: it resumes from the committed offset, bit for bit, no new generation. |
+| `source_repair` | Bytes changed in place after sending (a header at the end of a recording) are fixed by the block repair: final check `ok`, the hub holds the changed file, no new generation (spec 14.7). |
+| `source_new_generation` | A file that became shorter is sent as generation 2; generation 1 at the hub stays unchanged (spec 14.4). |
 | `reject_unknown` | A participant not on the list is rejected with `unknown_participant` and stores nothing. |
+| `reject_wrong_operation`, `reject_role` | The same for another operation (`wrong_operation`) and a role that does not match the list (`role`), spec 14.10. |
 | `consumer_relay` | A relayed stream of a reference source arrives bit for bit and verified. |
 | `message_to_adapter` | A message is told to the application exactly once, also after a restart. |
 | `message_from_adapter` | A message from the adapter reaches a reference recipient exactly once. |
+| `messages_to_adapter_disconnects`, `messages_from_adapter_disconnects` | Five messages each way through a slow link with two disconnects and a blackout: each told exactly once, content unchanged. |
 | `frame_hello` | The greeting is a valid `HELLO` that offers protocol version 1 (frame-level, scripted hub). |
 | `frame_bad_*` | One per invalid test vector (`docs/vectors/frames.json`): the participant answers `ERROR` with the expected code and closes the connection (spec 14.2). |
 | `frame_unknown_core_type` | An unknown core type is answered with `ERROR unknown_type`. |
@@ -62,4 +68,5 @@ The `frame_*` scenarios run against a **scripted hub** in the harness, which sen
 how an implementation handles frames the reference hub would never send.
 
 ## Planned
-- Block repair (§14.7), offline media bundles (§8.6), and the hub role under test.
+- Offline media bundles (§8.6) and the hub role under test. Both need new adapter commands (export and import
+  of a bundle; starting a hub with a participant list).

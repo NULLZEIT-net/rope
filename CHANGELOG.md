@@ -10,7 +10,10 @@ The package version is `rope_protocol.__version__`; the wire protocol has its ow
 ### Added
 - Conformance suite: frame-level scenarios against a scripted hub. They cover a valid `HELLO`, the invalid test
   vectors (each answered with `ERROR` and the expected code), unknown core and extension types, and a `REJECT`
-  with an announced operation. 16 scenarios in total (#32).
+  with an announced operation (#32).
+- Conformance suite: block repair after bytes changed in place, a new generation for a shorter file, rejects for
+  another operation and a wrong role, and five messages each way through a link that breaks. 22 scenarios in total
+  (#32).
 
 ### Changed
 - Specification: normative wording with BCP 14 key words (MUST, SHOULD, MAY) for the wire format (§14), media
