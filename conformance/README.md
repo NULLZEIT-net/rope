@@ -52,7 +52,14 @@ like any participant. It should reconnect quickly, with a back-off of at most ab
 | `consumer_relay` | A relayed stream of a reference source arrives bit for bit and verified. |
 | `message_to_adapter` | A message is told to the application exactly once, also after a restart. |
 | `message_from_adapter` | A message from the adapter reaches a reference recipient exactly once. |
+| `frame_hello` | The greeting is a valid `HELLO` that offers protocol version 1 (frame-level, scripted hub). |
+| `frame_bad_*` | One per invalid test vector (`docs/vectors/frames.json`): the participant answers `ERROR` with the expected code and closes the connection (spec 14.2). |
+| `frame_unknown_core_type` | An unknown core type is answered with `ERROR unknown_type`. |
+| `frame_extension_ignored` | An unknown extension frame (0x80+) is ignored; the session goes on. |
+| `frame_reject_announced` | A `REJECT` with the announced operation (spec 14.5) reaches the application. |
+
+The `frame_*` scenarios run against a **scripted hub** in the harness, which sends exact bytes, so they also test
+how an implementation handles frames the reference hub would never send.
 
 ## Planned
-- Frame-level checks with the test vectors (`docs/vectors/frames.json`): a mock peer sends damaged or unknown frames.
 - Block repair (§14.7), offline media bundles (§8.6), and the hub role under test.
