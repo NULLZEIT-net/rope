@@ -2,6 +2,21 @@
 
 Each entry: date, status (**decided** / **proposed**), reason.
 
+### 2026-11-07 – Spec 1.0: conformance language (decided)
+- **BCP 14 key words** (MUST, SHOULD, MAY, in capitals) in the normative parts only: §14, media format 1 (§8.6)
+  and a new §14.10 "Required behaviour of peers" that collects the rules from §7–§12 a peer can notice. The other
+  sections stay explanatory; where they overlap, the normative parts win.
+- **Bad frames:** sending `ERROR` before closing is a MUST, with "if sending fails, close anyway". Reason: the
+  operator on the other side sees why the connection ended, and the conformance suite can treat a missing `ERROR`
+  as a failure (it found exactly that bug in the reference participant, #32). Considered: close MUST, `ERROR`
+  SHOULD – rejected, a missing `ERROR` would only have been a warning.
+- **Acknowledge only after durable storage** is a MUST, although not visible on the wire: the promise "nothing is
+  lost" rests on it.
+- **Media:** writers SHOULD keep frames files at most 1 GiB (FAT32); readers MUST accept any size.
+- **Heartbeat and timeout:** a participant MUST use the values from `WELCOME` as sent; the hub is responsible for
+  them (it already refuses a timeout below twice the heartbeat).
+- **Release:** the wording goes in now; 1.0 is released after field experience over real radio links.
+
 ### 2026-11-07 – Spec 1.0: what is frozen (decided)
 - **Frozen for 1.0:** the wire format of §14 as it stands (frame layout, types, keys, values, greeting, final
   check and block repair frames) and **media format 1** (§8.6), so that other implementations can read and write

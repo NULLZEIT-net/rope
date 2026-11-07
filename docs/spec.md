@@ -8,7 +8,8 @@
 **Status: draft 1, on the way to 1.0.** This document describes the goals, model and behaviour of ROPE, and since
 draft 1 the wire format ([§14](#14-wire-format)). **Decided 2026-11-07 (#31):** the wire format of §14 and media
 format 1 (§8.6) are frozen for spec 1.0 as they stand; values that are a sender's or hub's choice are only
-recommended (§14.8); compatibility follows §14.9. Spec 1.0 is released after field experience; until then only
+recommended (§14.8); compatibility follows §14.9; the normative wording (MUST/SHOULD) covers §14, §8.6 and the
+required behaviour of peers (§14.10). Spec 1.0 is released after field experience; until then only
 corrections found there change these parts.
 
 Every statement is marked as one of:
@@ -16,6 +17,13 @@ Every statement is marked as one of:
 - **decided** – fixed by the maintainer,
 - **proposed** – a starting point, may change after measurements or review,
 - **assumed** – an estimate that has not been measured yet.
+
+**Conformance language (decided 2026-11-07, #31).** The key words **MUST**, **MUST NOT**, **SHOULD**, **SHOULD
+NOT** and **MAY** are to be interpreted as described in BCP 14 ([RFC 2119](https://www.rfc-editor.org/rfc/rfc2119),
+[RFC 8174](https://www.rfc-editor.org/rfc/rfc8174)) when, and only when, they appear in all capitals. They are used
+in the normative parts only: the wire format (§14), media format 1 (§8.6) and the required behaviour of peers
+(§14.10). An implementation conforms when it meets every MUST and MUST NOT there. All other sections explain the
+design; where they describe the same behaviour, the normative parts take precedence.
 
 ## 1. Purpose
 
@@ -254,9 +262,9 @@ All numbers are **proposed** starting values until measured.
 Removable media (e.g. a USB stick) can carry the same segments and messages. Import follows the same rules: check the
 committed offset, ignore duplicates, report damaged items. Network and media may be mixed.
 
-**Media format 1 (decided for spec 1.0, 2026-11-07, #31):** the bundle layout and content below. Another
-implementation must read and write the same media; `bundle.json` carries the format number. First implemented
-2026-10-26:
+**Media format 1 (decided for spec 1.0, 2026-11-07, #31):** the bundle layout and content below are normative.
+An implementation that supports offline media MUST read and write this format; `bundle.json` carries the format
+number, and a reader MUST NOT import a bundle whose `format` it does not know. First implemented 2026-10-26:
 
 - **Bundle:** one export writes one bundle. It holds the frames the exporter would send over the network, in the
   wire format of §14:
@@ -269,10 +277,13 @@ implementation must read and write the same media; `bundle.json` carries the for
 - **Layout on the medium:** `rope/<operation>/<from>-to-<to>-<created ms>-<random>/`, with the frames in
   `frames-0001.rope`, … and a manifest `bundle.json` (`format`, `operation`, `from`, `to`, `created`, `files`,
   `frames`, `complete`; a bundle from the hub also carries `participants`, §7).
-  - At most 1 GiB per frames file, because many sticks use FAT32 (limit 4 GiB per file).
-  - A bundle is written under a name ending in `.partial` and renamed when it is complete and durable. A medium
-    pulled out during the export therefore never holds a half bundle under a valid name.
-  - ROPE never deletes a bundle from a medium. The application decides when a stick is cleared.
+  - A writer SHOULD keep each frames file at most 1 GiB, because many sticks use FAT32 (limit 4 GiB per file).
+    A reader MUST accept frames files of any size.
+  - A writer MUST write a bundle under a name ending in `.partial` and MUST rename it only when it is complete and
+    durable. A reader MUST skip directories ending in `.partial`. A medium pulled out during the export therefore
+    never holds a half bundle under a valid name.
+  - The protocol implementation MUST NOT delete a bundle from a medium on its own. The application decides when a
+    stick is cleared.
 - **What a bundle carries:**
 
   | Direction | Content |
@@ -285,20 +296,21 @@ implementation must read and write the same media; `bundle.json` carries the for
   | hub → participant | `DELIVERY` reports for the participant's messages it has not acknowledged yet (§8.5) |
   | participant → hub | `DELIVERY_ACK` for every report it holds |
 
-  Order inside a bundle: receipts, then messages, then streams. If the medium is too small (`max_bytes`), the export
-  stops at a frame boundary and reports `complete: false`; the rest goes with the next bundle.
+  Order inside a bundle: receipts, then messages, then streams (SHOULD; a reader MUST accept any order). If the
+  medium is too small (`max_bytes`), the export MUST stop at a frame boundary and set `complete: false`; the rest
+  goes with the next bundle.
 - **Import:**
-  - Bundles are imported oldest first. Importing a bundle again changes nothing.
-  - Segments are stored as from the network (§8.3): durably, duplicates ignored. A segment beyond the committed
-    offset is a gap: the rest of that stream in the bundle is skipped and reported, the bytes must come first from
-    an earlier bundle or the network.
-  - Frames are read one at a time. A frame with a wrong CRC is skipped and reported; its length is known, so
-    reading goes on (later segments of that stream then usually meet a gap). A damaged frame header ends the reading
-    of its file, because the position of the next frame is lost. A cut-off file is reported.
+  - Bundles SHOULD be imported oldest first. Importing a bundle again MUST change nothing.
+  - Segments MUST be stored as from the network (§14.10): durably, duplicates not written. A segment beyond the
+    committed offset is a gap: the rest of that stream in the bundle MUST be skipped and SHOULD be reported; the
+    bytes must come first from an earlier bundle or the network.
+  - Frames are read one at a time. A frame with a wrong CRC MUST be skipped and SHOULD be reported; its length is
+    known, so reading goes on (later segments of that stream then usually meet a gap). A damaged frame header ends
+    the reading of its file, because the position of the next frame is lost. A cut-off file SHOULD be reported.
   - A bundle whose manifest cannot be read is reported by every participant that looks at the medium: nobody can
     tell for whom it was.
-  - The hub accepts only bundles from participants on its list, and only messages written by the bundle's sender
-    (§8.5).
+  - The hub MUST accept only bundles from participants on its list, and only messages written by the bundle's
+    sender (§8.5).
   - A received message is told to the application once, also if the same message arrives by medium and by network
     at the same time.
 - **Block repair over media (proposed, 2026-10-26):** the same frames as on the network (§14.7), one trip of the
@@ -500,15 +512,17 @@ Limits of the simulation:
 
 **Decided for spec 1.0 (2026-11-07, #31):** the frame layout, frame types, keys, values, greeting and the frames of
 the final check and block repair below. Values marked as recommended in §14.8 are not part of the wire format.
+This section is normative (conformance language at the top of this document).
 
 ### 14.1 Transport
 
 - ROPE runs over one TCP connection per participant (§5).
-- **Default port 47310** (TCP). Every application must be able to override it. At the time of choosing (2026-10-26)
-  the port was not assigned in the IANA registry, no known software used it, and it lies below the dynamic range that
-  operating systems use for outgoing connections (49152 and up). It is not registered with IANA. If the hub cannot
-  listen on the port, it reports this in plain language and names the port; it never silently picks another one.
-- An application may wrap the connection in TLS, e.g. with certificates on both sides, when the network is not closed
+- **Default port 47310** (TCP). An implementation MUST let the application choose another port. At the time of choosing
+  (2026-10-26) the port was not assigned in the IANA registry, no known software used it, and it lies below the dynamic
+  range that operating systems use for outgoing connections (49152 and up). It is not registered with IANA. If the hub
+  cannot listen on the port, it SHOULD report this in plain language and name the port; it MUST NOT silently pick
+  another one.
+- An application MAY wrap the connection in TLS, e.g. with certificates on both sides, when the network is not closed
   (§11). The frames inside are unchanged; the core does not know whether TLS is in use.
   **Decided (2026-11-04):** the hub and every participant take an optional `ssl` argument, an `ssl.SSLContext` the
   application prepares (certificates, trust, verification, minimum version); participants also take
@@ -532,21 +546,25 @@ Everything on the connection is a sequence of frames:
 | 12 + *M* | *B* | **blob:** raw bytes (segment data, message body), may be empty |
 | 12 + *M* + *B* | 4 | CRC-32 (as in zlib/ISO-HDLC) over all preceding bytes of the frame |
 
-- **Limits:** *M* ≤ 64 KiB and *B* ≤ 1 MiB. A receiver checks both lengths **before** reading the rest. A frame that
-  is too long, has a wrong magic or a wrong CRC is answered with `ERROR`, and then the connection is closed. Nothing
-  is acknowledged, so nothing is lost: after reconnecting, the transfer continues from the committed offset (§9).
-- **Why JSON for meta:** readable in network captures, part of every standard library, and extendable. Unknown keys
-  are ignored, so a newer participant can add keys without breaking older ones. The cost is about 100–200 bytes per
-  segment of up to 256 KiB, below 0.1 %.
-- **Meta encoding:** compact (no spaces), keys sorted, non-ASCII characters as UTF-8. Receivers must accept any valid
-  JSON object; the rule only makes frames reproducible for test vectors.
+- **Limits:** *M* ≤ 64 KiB and *B* ≤ 1 MiB. A receiver MUST check both lengths **before** reading the rest.
+- **Bad frames:** a frame that is too long, has a wrong magic or a wrong CRC, whose meta is not a JSON object, or that
+  breaks §14.3 or §14.4 is a bad frame. The receiver MUST send `ERROR` (code as in the test vectors, §14.6) and then
+  MUST close the connection; if sending the `ERROR` fails, it MUST close anyway. It MUST NOT act on the bad frame.
+  Nothing is acknowledged, so nothing is lost: after reconnecting, the transfer continues from the committed offset
+  (§9). The same applies wherever this document says a frame is answered with `ERROR`.
+- **Why JSON for meta:** readable in network captures, part of every standard library, and extendable. Receivers MUST
+  ignore unknown keys, so a newer participant can add keys without breaking older ones. The cost is about 100–200 bytes
+  per segment of up to 256 KiB, below 0.1 %.
+- **Meta encoding:** senders SHOULD encode compact (no spaces), with keys sorted and non-ASCII characters as UTF-8.
+  Receivers MUST accept any valid JSON object; the rule only makes frames reproducible for test vectors.
 - **Why a CRC per frame:** the TCP checksum is weak; the CRC catches damage between the network stack and the
   application. It protects the transfer; stored data is protected separately (segment CRC, stream SHA-256).
 
 ### 14.3 Frame types
 
-Types `0x00`–`0x7F` belong to the core. A receiver that does not know a core type answers with `ERROR` and closes the
-connection. Types `0x80`–`0xFF` are extensions: a receiver that does not know one ignores it.
+Types `0x00`–`0x7F` belong to the core. A receiver that does not know a core type MUST treat the frame as a bad
+frame (`ERROR` `unknown_type`, §14.2). Types `0x80`–`0xFF` are extensions: a receiver that does not know one MUST
+ignore it. A core frame without one of its required keys, or with a value outside §14.4, is a bad frame.
 
 | Type | Name | Direction | Meta (required keys) | Blob |
 |---|---|---|---|---|
@@ -571,8 +589,8 @@ connection. Types `0x80`–`0xFF` are extensions: a receiver that does not know 
 
 Optional keys:
 
-- `SEGMENT` may carry `repair` (`true` or `false`, default `false`, §14.7).
-- `WELCOME` may carry `participants`: the participant list as every participant may know it,
+- `SEGMENT` MAY carry `repair` (`true` or `false`, default `false`, §14.7).
+- `WELCOME` MAY carry `participants`: the participant list as every participant may know it,
   `[{"participant": …, "name": …, "role": …}]`, the hub first with role `hub` (§7). Added 2026-10-26; a participant
   that does not know the key ignores it.
 
@@ -581,23 +599,24 @@ Optional keys:
 - **Times** (`t`, `t_hello`): integer milliseconds since 1970-01-01 UTC, from the clock of the frame's sender.
 - **Identifiers** (`participant`, `hub`, `operation`, `from`, entries of `to`): 1–64 characters from `A–Z a–z 0–9 . _ -`.
 - **Stream name** (`stream`): chosen by the application, 1–255 bytes UTF-8, e.g. `rec-0005.dat`. A receiver
-  must **never** use it directly as a file path; it maps names to its own storage. The hub relays a stream as
-  `<source>/<stream>` (§7). That name must also fit in 255 bytes; otherwise the hub refuses the stream with `ERROR`
-  `bad_frame` and a plain-language reason.
+  MUST NOT use it directly as a file path; it maps names to its own storage. The hub relays a stream as
+  `<source>/<stream>` (§7). That name must also fit in 255 bytes; otherwise the hub MUST refuse the stream with
+  `ERROR` `bad_frame` and a plain-language reason.
 - **Generation** (`gen`): integer ≥ 1. The sender starts a new generation when a stream is not a continuation of the
   previous one: the file became shorter, or the final check finds more than half of its blocks changed (§14.7).
-  Receivers keep every generation separately and never overwrite one with another. Bytes changed in place within a
-  generation (e.g. a header updated at the end of a recording) are not a new generation; the block repair fixes them.
+  Receivers MUST keep every generation separately and MUST NOT overwrite one with another. Bytes changed in place within
+  a generation (e.g. a header updated at the end of a recording) are not a new generation; the block repair fixes them.
 - **Offsets and lengths** (`off`, `len`, `size`, `committed`): bytes of the raw (decoded) stream.
 - **Checksums:** `crc` is the CRC-32 of the raw segment data or message body after decoding; `sha256` and `sums` are
   SHA-256 digests in lower-case hex.
 - **Message length** (`len`): bytes of the raw body, at most 1 MiB. Added on 2026-10-26: without it, a receiver could
   not bound the decompression of a `zlib` body (the same rule as for segments, see Encoding).
-- **Encoding** (`enc`): `none` or `zlib` (§10: low level). The sender uses `zlib` only when it makes the blob smaller.
-  A `zlib` blob is exactly one complete zlib stream. The receiver decodes at most `len` + 1 bytes and rejects anything
-  that is not exactly `len` bytes, so a small blob can never expand into a large amount of memory.
-- **Message id** (`id`): 32 lower-case hex characters chosen by the original sender, e.g. a random UUID. It stays the
-  same across retries and relays.
+- **Encoding** (`enc`): `none` or `zlib` (§10: low level). The sender SHOULD use `zlib` only when it makes the blob
+  smaller. A `zlib` blob MUST be exactly one complete zlib stream. The receiver MUST decode at most `len` + 1 bytes
+  and MUST reject anything that is not exactly `len` bytes (bad frame), so a small blob can never expand into a large
+  amount of memory. The data MUST match `crc` after decoding.
+- **Message id** (`id`): 32 lower-case hex characters chosen by the original sender, e.g. a random UUID. It MUST
+  stay the same across retries and relays.
 - **Message kind** (`kind`): chosen by the application, 1–64 characters, same alphabet as identifiers. The core does
   not interpret it.
 - **Delivery report:** in `DELIVERY`, `delivered`, `pending` and `unknown` are lists of participant identifiers
@@ -605,26 +624,28 @@ Optional keys:
   Added 2026-10-26.
 - **Role** (`role`): `source`, `consumer` or `recipient` (§7).
 - **Reject and error codes** (`code`): `unknown_participant`, `wrong_operation`, `version`, `role`, `busy`,
-  `bad_frame`, `too_large`, `unknown_type`, `storage`, `internal`. `text` is plain language for the operator.
+  `bad_frame`, `too_large`, `unknown_type`, `storage`, `internal`. Receivers MUST accept other codes as plain
+  strings (§14.9). `text` is plain language for the operator.
 
 ### 14.5 Greeting and version
 
 1. The participant sends `HELLO`. `versions` lists the protocol versions it supports. `have` lists what it already
    holds as a receiver: `[{"stream": …, "gen": …, "committed": …}]` (empty for a pure source).
-2. The hub picks the highest common version and answers `WELCOME` with `version`. `have` lists what the hub holds from
-   this participant. Otherwise it answers `REJECT` and closes the connection.
+2. The hub MUST pick the highest common version and answer `WELCOME` with `version`. `have` lists what the hub
+   holds from this participant. Otherwise it MUST answer `REJECT` and close the connection.
    **Announced operation (decided, added 2026-11-06):** with code `wrong_operation` a hub that is configured to do so
    adds `operation` (its operation identifier) and optionally `operation_name` (a name for people, 1-100
-   characters) to `REJECT`. Both keys are optional; older participants ignore them. A participant never switches
-   to the announced operation on its own: the application may offer it to its user and greet again. Hubs do not
-   announce by default, because anyone who reaches the hub learns the identifier (§11).
-3. Every later frame carries the chosen version in byte 2. The 12-byte header and the frames `HELLO`, `WELCOME` and
-   `REJECT` keep their layout in all versions, so that version 1 can always reject a newer participant with a
+   characters) to `REJECT`. Both keys are optional; older participants ignore them. A participant MUST NOT switch
+   to the announced operation on its own: the application MAY offer it to its user and greet again. Announcing
+   SHOULD be off by default, because anyone who reaches the hub learns the identifier (§11).
+3. Every later frame MUST carry the chosen version in byte 2. The 12-byte header and the frames `HELLO`, `WELCOME`
+   and `REJECT` keep their layout in all versions, so that version 1 can always reject a newer participant with a
    readable reason.
 4. **Clock offset:** `WELCOME` echoes the participant's `HELLO.t` as `t_hello`. The participant receives `WELCOME` at
    its own time *r* and estimates the hub clock offset as `t − (t_hello + r) / 2`, with an uncertainty of ± half the
-   round trip. The core reports the estimate to the application and never changes the system clock.
+   round trip. The core reports the estimate to the application and MUST NOT change the system clock.
 5. `heartbeat_s` and `timeout_s` from the hub's configuration apply to both sides (§9: configurable, to be measured).
+   A participant MUST use the values as sent; the hub is responsible for them (§14.10).
 
 ### 14.6 Example (test vector)
 
@@ -651,17 +672,18 @@ Why: a recording program may change bytes it has already written, typically a he
 recording. Resending the whole file for that would cost the full transfer again over a slow link.
 
 1. When the application declares the stream complete, the sender sends `STREAM_END` with the final `size` and the
-   `sha256` of that many bytes of its file, once everything up to `size` is acknowledged.
-2. The receiver compares with what it holds and answers `STREAM_CHECK` (`ok` or `mismatch`, `size` = its committed
-   offset). On `mismatch` it then sends `BLOCK_SUMS`: the SHA-256 of every block of `block_size` bytes of its data
-   (the last block may be shorter), in index order, several frames if needed; `first` is the index of the frame's
-   first block. Draft 1: blocks of 1 MiB and at most 512 sums per frame (about 34 KiB of meta).
+   `sha256` of that many bytes of its file. It MUST NOT send it before everything up to `size` is acknowledged.
+2. The receiver MUST compare with what it holds and answer `STREAM_CHECK` (`ok` or `mismatch`, `size` = its committed
+   offset). On `mismatch` it then MUST send `BLOCK_SUMS`: the SHA-256 of every block of `block_size` bytes of its data
+   (the last block may be shorter), in index order, several frames if needed; `first` is the index of the frame's first
+   block. The block size is the receiver's choice (recommended 1 MiB, §14.8); a frame SHOULD carry at most 512 sums
+   (about 34 KiB of meta) and MUST stay within the meta limit.
 3. The sender has all sums when it holds ⌈`size` / `block_size`⌉ of them. It compares each block with its file:
    - If **more than half** of the blocks differ, the file was replaced rather than edited: the sender starts a new
-     generation, and the receiver keeps the old one unchanged.
+     generation, and the receiver MUST keep the old one unchanged.
    - Otherwise it resends exactly the differing blocks as `SEGMENT` with `repair: true` and then sends `STREAM_END`
-     again. The receiver overwrites those bytes below its committed offset, makes them durable, and acknowledges as
-     usual (the committed offset does not change).
+     again. The receiver overwrites those bytes below its committed offset and MUST make them durable before it
+     acknowledges as usual (the committed offset does not change).
 4. After **3** repairs that reached the receiver and still end in `mismatch`, the sender stops and reports the
    mismatch to the application in plain language. The receiver keeps all bytes. A repair counts as reached when the
    answer to the `STREAM_END` after it arrives on the same connection (frames keep their order); a repair cut off by
@@ -669,16 +691,18 @@ recording. Resending the whole file for that would cost the full transfer again 
 5. A disconnect at any point is harmless. After reconnecting, the sender sends `STREAM_END` again, and the check and
    repair start over from what the receiver holds.
 
-Without `repair`, a segment below the committed offset is a duplicate and is not written (§8.3), so a late duplicate
-never changes stored data. A `STREAM_CHECK` that does not answer an open `STREAM_END` of the same session is logged
-and ignored, and so are `BLOCK_SUMS` that nobody waits for: a stray answer never restarts a repair. Streams are kept per participant, so only a stream's own sender can repair it.
+Without `repair`, a segment below the committed offset is a duplicate and MUST NOT be written (§8.3), so a late
+duplicate never changes stored data. A verified stream MUST ignore repair segments. A `STREAM_CHECK` that does not
+answer an open `STREAM_END` of the same session MUST be ignored (and SHOULD be logged), and so MUST `BLOCK_SUMS` that
+nobody waits for: a stray answer never restarts a repair. Streams are kept per participant, so only a stream's own
+sender can repair it.
 
 Status: the frames and their keys are **decided** for 1.0. Block size, the half rule and the 3 rounds are a
 sender's choice (recommended values, §14.8), assumptions until measured.
 
 ### 14.8 Recommended values (not part of the wire format)
 
-**Decided 2026-11-07 (#31):** the following are choices of the sender or the hub. A peer must work with any value
+**Decided 2026-11-07 (#31):** the following are choices of the sender or the hub. A peer MUST work with any value
 within the limits of §14.2–14.4. The values given are recommended starting points, **assumed** until measured.
 
 | What | Recommended | Where it matters |
@@ -702,6 +726,43 @@ within the limits of §14.2–14.4. The values given are recommended starting po
 - **Media format:** the same rules apply to `bundle.json` and its `format` number.
 - Every change is listed in `CHANGELOG.md`; test vectors (`docs/vectors/frames.json`) are extended, never changed
   silently.
+
+### 14.10 Required behaviour of peers (decided 2026-11-07)
+
+The rules from §7–§12 that another implementation must follow so that peers work together and nothing is lost. The
+explanations stay in those sections.
+
+**Durability and acknowledgement**
+
+1. A receiver MUST NOT send `ACK`, `MESSAGE_ACK` or `DELIVERY_ACK` before what it acknowledges is stored durably
+   (written and flushed to stable storage). If storing fails, e.g. the disk is full, it MUST NOT acknowledge.
+2. A segment or message that is already stored MUST be acknowledged again without writing it a second time.
+   Messages are recognised by `id`.
+3. A sender MUST continue a stream from the committed offset the receiver reported (`have` in `WELCOME` or
+   `HELLO`, or the latest `ACK`). It MUST keep unacknowledged segments and messages and send them again after a
+   reconnect.
+
+**Sessions and timing**
+
+4. A participant has at most one session at the hub. A new greeting from the same participant MUST replace the old
+   session; the hub MUST NOT refuse it because an old connection still looks alive.
+5. Each side MUST send a frame at least every `heartbeat_s` (a `HEARTBEAT` if nothing else is due). Each side MUST
+   end the session when nothing arrives for `timeout_s`, and when a send cannot complete within `timeout_s`.
+6. The hub MUST NOT run with a `timeout_s` below twice its `heartbeat_s`.
+7. After a lost session a participant SHOULD reconnect with back-off and SHOULD NOT give up (§9, §14.8).
+
+**Participants, operations and messages**
+
+8. The hub MUST answer `REJECT` to a participant that is not on its list (`unknown_participant`), greets with
+   another operation (`wrong_operation`), a role that does not match the list (`role`) or no common version
+   (`version`).
+9. Data of different operations and of different participants MUST be kept apart and never mixed.
+10. The hub MUST accept a `MESSAGE` only if `from` is the participant of that connection; otherwise it is a bad frame
+    (`bad_frame`).
+11. The hub MUST deliver a message to every recipient on its list, and MUST report recipients that are not on the
+    list as `unknown` in `DELIVERY`. It MUST send `DELIVERY` again after reconnects until a report with all
+    delivered recipients is acknowledged.
+12. A receiver MUST accept streams and messages in any order (catch-up order is the sender's choice, §14.8).
 
 ## Open points
 

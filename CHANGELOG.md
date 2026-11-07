@@ -12,6 +12,10 @@ The package version is `rope_protocol.__version__`; the wire protocol has its ow
   vectors (each answered with `ERROR` and the expected code), unknown core and extension types, and a `REJECT`
   with an announced operation. 16 scenarios in total (#32).
 
+### Changed
+- Specification: normative wording with BCP 14 key words (MUST, SHOULD, MAY) for the wire format (§14), media
+  format 1 (§8.6) and the new §14.10 "Required behaviour of peers". No change of behaviour or wire format (#31).
+
 ### Fixed
 - A participant now answers a bad frame from the hub with `ERROR` before closing the connection (spec 14.2), as
   the hub already did. Before, it only closed. Found by the conformance suite.
