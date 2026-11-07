@@ -56,7 +56,8 @@ class Adapter:
         args = shlex.split(self.command, posix=os.name != "nt")
         args = [a.strip('"') for a in args]
         self.proc = await asyncio.create_subprocess_exec(*args, stdin=asyncio.subprocess.PIPE,
-                                                         stdout=asyncio.subprocess.PIPE)
+                                                         stdout=asyncio.subprocess.PIPE,
+                                                         limit=64 * 1024 * 1024)   # status lines carry message bodies
         return self
 
     async def call(self, cmd, timeout=15, **kw):
@@ -253,6 +254,112 @@ async def message_from_adapter(a, tmp):
             await ref.stop()
 
 
+async def _wait_committed(b, participant, stream, total, gen=1, timeout=60):
+    end = time.monotonic() + timeout
+    while b.committed(participant, stream, gen) < total:
+        check(time.monotonic() < end, "hub did not receive all %d bytes of generation %d" % (total, gen))
+        await asyncio.sleep(0.05)
+
+
+async def source_repair(a, tmp):
+    """Bytes changed in place after they were sent (a header updated at the end of a recording) are fixed by the
+    block repair: final check ok, the hub holds the changed file, no new generation (spec 14.7)."""
+    data = bytearray(os.urandom(3_000_000))             # three blocks of the recommended 1 MiB
+    path = _file(tmp, "rec-0001.dat", bytes(data))
+    async with Bench(tmp, {"source-1": "source"}) as b:
+        await a.call("start_source", participant="source-1", operation=OP, hub=b.address,
+                     files={"rec-0001.dat": path}, dir=os.path.join(tmp, "src"))
+        await _wait_committed(b, "source-1", "rec-0001.dat", len(data))
+        data[0:64] = os.urandom(64)                     # the header, rewritten in place
+        with open(path, "r+b") as f:
+            f.write(bytes(data[0:64]))
+        await a.call("complete", stream="rec-0001.dat")
+        st = await a.until(lambda s: "rec-0001.dat" in s["checked"], "no final check", 60)
+        check(st["checked"]["rec-0001.dat"] == "ok", "final check after repair: %s" % st["checked"]["rec-0001.dat"])
+        check(_content(b.at_hub("source-1", "rec-0001.dat")["path"]) == bytes(data),
+              "stream at the hub differs from the changed file")
+        check(b.at_hub("source-1", "rec-0001.dat", 2) is None, "a new generation instead of a block repair")
+
+
+async def source_new_generation(a, tmp):
+    """A file that became shorter is a new generation; the hub keeps the old one unchanged (spec 14.4)."""
+    old, new = os.urandom(400_000), os.urandom(150_000)
+    path = _file(tmp, "rec-0001.dat", old)
+    async with Bench(tmp, {"source-1": "source"}) as b:
+        await a.call("start_source", participant="source-1", operation=OP, hub=b.address,
+                     files={"rec-0001.dat": path}, dir=os.path.join(tmp, "src"))
+        await _wait_committed(b, "source-1", "rec-0001.dat", len(old))
+        _file(tmp, "rec-0001.dat", new)                 # replaced by a shorter file
+        await _wait_committed(b, "source-1", "rec-0001.dat", len(new), gen=2)
+        await a.call("complete", stream="rec-0001.dat")
+        st = await a.until(lambda s: "rec-0001.dat" in s["checked"], "no final check", 60)
+        check(st["checked"]["rec-0001.dat"] == "ok", "final check: %s" % st["checked"]["rec-0001.dat"])
+        check(_content(b.at_hub("source-1", "rec-0001.dat", 2)["path"]) == new, "generation 2 differs")
+        check(_content(b.at_hub("source-1", "rec-0001.dat", 1)["path"]) == old, "generation 1 was changed")
+
+
+def _reject_scenario(name, participants, operation, code):
+    async def scenario(a, tmp):
+        path = _file(tmp, "x.dat", b"x")
+        async with Bench(tmp, participants) as b:
+            await a.call("start_source", participant="source-1", operation=operation, hub=b.address,
+                         files={"x.dat": path}, dir=os.path.join(tmp, "src"))
+            st = await a.until(lambda s: s["rejected"] is not None, "no reject reported")
+            check(st["rejected"]["code"] == code, "reject code %s, expected %s" % (st["rejected"]["code"], code))
+            check(not st["connected"], "rejected participant counts as connected")
+            check(b.hub.store.have("source-1") == [], "hub stored data of a rejected participant")
+    scenario.__name__ = name
+    return scenario
+
+
+reject_wrong_operation = _reject_scenario("reject_wrong_operation", {"source-1": "source"}, "op-2", "wrong_operation")
+reject_role = _reject_scenario("reject_role", {"source-1": "consumer"}, OP, "role")
+
+FLAKY = dict(profile=Profile("slow", rate=60_000),
+             script=[(0.3, "disconnect", 0.2), (0.9, "disconnect", 0.3), (1.6, "blackout", 0.6)])
+
+
+async def messages_to_adapter_disconnects(a, tmp):
+    """Several messages through a link that breaks: each is told exactly once (spec 8.5, 14.10)."""
+    bodies = [os.urandom(30_000) for _ in range(5)]
+    async with Bench(tmp, {"source-1": "source", "r-1": "recipient"}, **FLAKY) as b:
+        src = Source("source-1", OP, "127.0.0.1", {}, os.path.join(tmp, "ref-src"), hub_port=b.hub.port, **REF).start()
+        try:
+            await a.call("start_recipient", participant="r-1", operation=OP, hub=b.address, dir=os.path.join(tmp, "r"))
+            ids = [src.send_message(["r-1"], "note", body) for body in bodies]
+            await a.until(lambda s: all(s["told"].get(i) for i in ids), "not every message told", 60)
+            await asyncio.sleep(1.5)
+            st = await a.call("status")
+            check(all(st["told"].get(i) == 1 for i in ids), "told counts %s" % [st["told"].get(i) for i in ids])
+            inbox = {m["id"]: bytes.fromhex(m["body_hex"]) for m in st["inbox"]}
+            check(all(inbox.get(i) == body for i, body in zip(ids, bodies)), "message content differs")
+        finally:
+            await src.stop()
+
+
+async def messages_from_adapter_disconnects(a, tmp):
+    """Several messages from the adapter through a link that breaks reach a reference recipient exactly once."""
+    told = []
+    async with Bench(tmp, {"r-1": "recipient", "r-2": "recipient"}, **FLAKY) as b:
+        ref = Recipient("r-2", OP, "127.0.0.1", os.path.join(tmp, "ref-r"), hub_port=b.hub.port,
+                        on_message=lambda meta, body: told.append((meta["id"], body)), **REF).start()
+        try:
+            await a.call("start_recipient", participant="r-1", operation=OP, hub=b.address, dir=os.path.join(tmp, "r"))
+            sent = {}
+            for _ in range(5):
+                body = os.urandom(30_000)
+                sent[(await a.call("send_message", to=["r-2"], kind="note", body_hex=body.hex()))["id"]] = body
+            end = time.monotonic() + 60
+            while len({i for i, _ in told}) < len(sent):
+                check(time.monotonic() < end, "%d of %d messages arrived" % (len({i for i, _ in told}), len(sent)))
+                await asyncio.sleep(0.05)
+            await asyncio.sleep(1.5)
+            check(len(told) == len(sent), "%d messages told for %d sent" % (len(told), len(sent)))
+            check(all(sent.get(i) == body for i, body in told), "message content differs")
+        finally:
+            await ref.stop()
+
+
 class MockHub:
     """A scripted hub for frame-level checks: takes the greeting of the adapter's source and answers with ``reply``
     (bytes, sent at once), then records every frame until the adapter closes the connection."""
@@ -387,8 +494,9 @@ with open(VECTORS, encoding="utf-8") as _f:
     BAD_VECTORS = [_bad_vector_scenario(v) for v in json.load(_f)["invalid"]]
 
 
-SCENARIOS = [source_basic, source_disconnects, source_restart, reject_unknown, consumer_relay, message_to_adapter,
-             message_from_adapter, frame_hello] + BAD_VECTORS + [frame_unknown_core_type, frame_extension_ignored,
+SCENARIOS = [source_basic, source_disconnects, source_restart, source_repair, source_new_generation, reject_unknown,
+             reject_wrong_operation, reject_role, consumer_relay, message_to_adapter, message_from_adapter,
+             messages_to_adapter_disconnects, messages_from_adapter_disconnects, frame_hello] + BAD_VECTORS + [frame_unknown_core_type, frame_extension_ignored,
                                                                  frame_reject_announced]
 
 
@@ -411,7 +519,7 @@ async def run(adapter_cmd, only=None, out=print):
             finally:
                 await a.close()
         results.append((sc.__name__, res[0], round(time.monotonic() - t0, 1), res[1]))
-        out("%-22s %-5s %5.1f s  %s" % results[-1])
+        out("%-34s %-5s %5.1f s  %s" % results[-1])
     return results
 
 
