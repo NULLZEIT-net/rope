@@ -21,6 +21,9 @@ import traceback
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "src"))
 
+from rope_protocol import frames as F  # noqa: E402
+from rope_protocol.channel import now_ms  # noqa: E402
+from rope_protocol.frames import Frame, FrameType  # noqa: E402
 from rope_protocol.hub import Hub  # noqa: E402
 from rope_protocol.linksim import LinkProxy, Profile  # noqa: E402
 from rope_protocol.recipient import Recipient  # noqa: E402
@@ -30,6 +33,7 @@ DEFAULT_ADAPTER = '"%s" "%s"' % (sys.executable, os.path.join(HERE, "adapter_pyt
 HUB = dict(heartbeat_s=0.2, timeout_s=1.0)
 REF = dict(timeout_s=1.0, backoff=(0.05, 0.3), poll_s=0.05)
 OP = "op-1"
+VECTORS = os.path.join(HERE, "..", "docs", "vectors", "frames.json")
 
 
 class Failed(AssertionError):
@@ -249,8 +253,143 @@ async def message_from_adapter(a, tmp):
             await ref.stop()
 
 
+class MockHub:
+    """A scripted hub for frame-level checks: takes the greeting of the adapter's source and answers with ``reply``
+    (bytes, sent at once), then records every frame until the adapter closes the connection."""
+
+    def __init__(self, reply, listen_s=3.0):
+        self.reply = reply
+        self.listen_s = listen_s
+        self.hello = None
+        self.frames = []
+        self.closed = False
+        self.done = asyncio.Event()
+
+    async def start(self):
+        self.server = await asyncio.start_server(self._conn, "127.0.0.1", 0)
+        self.address = "127.0.0.1:%d" % self.server.sockets[0].getsockname()[1]
+        return self
+
+    async def stop(self):
+        self.server.close()
+
+    async def _conn(self, reader, writer):
+        if self.done.is_set():                      # only the first connection counts
+            writer.close()
+            return
+        dec = F.FrameDecoder()
+        try:
+            while self.hello is None:
+                data = await asyncio.wait_for(reader.read(65536), 5)
+                if not data:
+                    return
+                got = dec.feed(data)
+                if got:
+                    self.hello = got[0]
+                    self.frames += got[1:]
+            writer.write(self.reply(self.hello))
+            await writer.drain()
+            end = time.monotonic() + self.listen_s
+            while time.monotonic() < end:
+                try:
+                    data = await asyncio.wait_for(reader.read(65536), 0.15)
+                except asyncio.TimeoutError:
+                    data = None
+                if data is not None and not data:
+                    self.closed = True
+                    break
+                if data:
+                    self.frames += dec.feed(data)
+                # stay alive like a hub: heartbeats, so that silence never ends the session (spec 9)
+                writer.write(F.encode(Frame(FrameType.HEARTBEAT, dict(t=now_ms()))))
+                await writer.drain()
+        except (ConnectionError, F.FrameError):
+            self.closed = True
+        finally:
+            self.done.set()
+            writer.close()
+
+
+def _welcome(hello):
+    return F.encode(Frame(FrameType.WELCOME, dict(version=1, hub="hub", t=now_ms(), t_hello=hello.meta.get("t", 0),
+                                                  heartbeat_s=0.2, timeout_s=1.0, have=[])))
+
+
+async def _mock(a, tmp, reply, listen_s=3.0):
+    path = _file(tmp, "x.dat", b"x" * 1000)
+    hub = await MockHub(reply, listen_s).start()
+    try:
+        await a.call("start_source", participant="source-1", operation=OP, hub=hub.address, files={"x.dat": path},
+                     dir=os.path.join(tmp, "src"))
+        await asyncio.wait_for(hub.done.wait(), listen_s + 15)
+        hub.status = await a.call("status")         # before stopping: what the adapter's participant reports
+        return hub
+    finally:
+        await a.call("stop")
+        await hub.stop()
+
+
+def _errors(hub):
+    return [f for f in hub.frames if f.type == FrameType.ERROR]
+
+
+async def frame_hello(a, tmp):
+    """The greeting is a valid HELLO (spec 14.5)."""
+    hub = await _mock(a, tmp, _welcome, listen_s=0.5)
+    h = hub.hello
+    check(h is not None and h.type == FrameType.HELLO, "first frame is not HELLO")
+    F.validate(h)
+    check(h.meta["participant"] == "source-1" and h.meta["operation"] == OP and h.meta["role"] == "source",
+          "HELLO names %s / %s / %s" % (h.meta["participant"], h.meta["operation"], h.meta["role"]))
+    check(1 in h.meta["versions"], "HELLO does not offer protocol version 1")
+
+
+def _bad_vector_scenario(v):
+    async def scenario(a, tmp):
+        raw = bytes.fromhex(v["frame_hex"])
+        hub = await _mock(a, tmp, lambda hello: _welcome(hello) + raw)
+        errs = _errors(hub)
+        check(errs, "no ERROR after the damaged frame %r (got %s)" % (v["name"],
+                                                                    [FrameType(f.type).name for f in hub.frames]))
+        check(errs[0].meta["code"] == v["error"], "ERROR code %s, expected %s" % (errs[0].meta["code"], v["error"]))
+        check(hub.closed, "connection not closed after ERROR")
+    scenario.__name__ = "frame_bad_" + v["name"].replace("-", "_")
+    return scenario
+
+
+async def frame_unknown_core_type(a, tmp):
+    hub = await _mock(a, tmp, lambda hello: _welcome(hello) + F.encode(Frame(0x7E, dict(t=now_ms()))))
+    errs = _errors(hub)
+    check(errs and errs[0].meta["code"] == "unknown_type", "unknown core type not answered with ERROR unknown_type")
+    check(hub.closed, "connection not closed after ERROR")
+
+
+async def frame_extension_ignored(a, tmp):
+    """An unknown extension frame (0x80-0xFF) is ignored: no ERROR, the session goes on (heartbeats keep coming)."""
+    hub = await _mock(a, tmp, lambda hello: _welcome(hello) + F.encode(Frame(0x90, dict(x=1))), listen_s=2.0)
+    check(not _errors(hub), "extension frame answered with ERROR %s" % [f.meta for f in _errors(hub)])
+    check(not hub.closed, "connection closed after an extension frame")
+    check(any(f.type in (FrameType.HEARTBEAT, FrameType.SEGMENT) for f in hub.frames), "session did not go on")
+
+
+async def frame_reject_announced(a, tmp):
+    """A REJECT with the optional announced operation reaches the application (spec 14.5)."""
+    rej = F.encode(Frame(FrameType.REJECT, dict(code="wrong_operation", text="this hub serves op-9",
+                                                operation="op-9", operation_name="Lake exercise")))
+    hub = await _mock(a, tmp, lambda hello: rej, listen_s=1.0)
+    check(hub.hello is not None, "no greeting")
+    st = hub.status
+    check(st["rejected"] and st["rejected"]["code"] == "wrong_operation", "reject not reported: %s" % st["rejected"])
+    check(st["rejected"].get("operation") == "op-9", "announced operation not reported: %s" % st["rejected"])
+
+
+with open(VECTORS, encoding="utf-8") as _f:
+    BAD_VECTORS = [_bad_vector_scenario(v) for v in json.load(_f)["invalid"]]
+
+
 SCENARIOS = [source_basic, source_disconnects, source_restart, reject_unknown, consumer_relay, message_to_adapter,
-             message_from_adapter]
+             message_from_adapter, frame_hello] + BAD_VECTORS + [frame_unknown_core_type, frame_extension_ignored,
+                                                                 frame_reject_announced]
 
 
 async def run(adapter_cmd, only=None, out=print):

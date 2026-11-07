@@ -213,6 +213,11 @@ class Participant:
                     await asyncio.wait_for(ch.send(F.Frame(F.FrameType.BYE, {"reason": "stop"})), 1.0)
                 except Exception:
                     pass
+        except F.FrameError as e:
+            # spec 14.2: a bad frame from the hub is answered with ERROR, then the connection is closed (the hub does
+            # the same towards participants); found by the conformance suite (#32)
+            await ch.error_and_close(e.code, e.text)
+            raise
         finally:
             ch.abort()
             await reap(tasks)
