@@ -17,9 +17,11 @@ ROPE transfers growing files and small messages between a small, closed group of
 networks – radio links, Wi-Fi, no internet. Like a rescue line it holds the connection even when it is pulled:
 an interruption costs time, never data.
 
-> **Status:** early development. The [specification](https://github.com/NULLZEIT-net/rope/blob/main/docs/spec.md) is draft 1 with a proposed wire format. Streams
-> from sources via the hub to consumers work, including resume after disconnects and restarts and block repair, and
-> so do messages with custody and offline media (e.g. a USB stick) as a second path. Interfaces will change.
+> **Status:** early development, version 0.1.4. The wire format and media format 1 of the
+> [specification](https://github.com/NULLZEIT-net/rope/blob/main/docs/spec.md) are frozen for spec 1.0 (decided
+> 2026-11-07); spec 1.0 is released after field experience. Streams from sources via the hub to consumers work,
+> including resume after disconnects and restarts and block repair, and so do messages with custody and offline media
+> (e.g. a USB stick) as a second path. The Python interfaces may still change.
 
 ## Why
 
@@ -45,7 +47,8 @@ transfer).
 - **Standard library only** – no third-party runtime dependencies.
 - **Two paths** – the same segments and messages can also travel on removable media and mix with the network.
 
-ROPE has **no encryption** by design and is meant for closed networks – see
+ROPE has **no encryption of its own** and is meant for closed networks. Where a link is not closed, the application
+can wrap every connection in **TLS** by passing an `ssl.SSLContext` to the hub and the participants – see
 [Security considerations](https://github.com/NULLZEIT-net/rope/blob/main/docs/spec.md#11-security-considerations).
 
 ## How it works (in short)
@@ -81,7 +84,7 @@ python -m pip install rope-protocol
 
 The package is named `rope-protocol` (import `rope_protocol`), because the name `rope` on PyPI belongs to a
 well-known refactoring library. Versions and changes: [CHANGELOG.md](https://github.com/NULLZEIT-net/rope/blob/main/CHANGELOG.md). While ROPE is in early
-development, pin the version you tested with (e.g. `rope-protocol==0.1.2`).
+development, pin the version you tested with (e.g. `rope-protocol==0.1.4`).
 
 For development:
 
@@ -106,11 +109,19 @@ values are assumptions until measured on real links (see spec §13).
 
 ROPE's default port is **47310**; applications can override it.
 
+### Status for operators
+
+- `python -m rope_protocol.status <hub folder>` shows what a hub holds (streams, messages waiting per recipient),
+  read from its folder.
+- A running hub tells its application who is connected and how fresh each link is: `Hub.connections()` (role,
+  session start, seconds since the participant was last heard, peer address) and `Hub.last_seen()` (when the others
+  were last connected). Both are copies and may be called from another thread; no extra traffic is sent.
+
 ## Repository layout
 
 | Path | Content |
 |---|---|
-| `docs/spec.md` | Protocol specification (draft) |
+| `docs/spec.md` | Protocol specification (wire format and media format 1 frozen for 1.0) |
 | `docs/decisions.md` | Decisions with date and reason |
 | `docs/ideas.md` | Ideas not yet planned |
 | `docs/images/` | Logo and symbol (SVG; light and dark variant) |
@@ -118,6 +129,8 @@ ROPE's default port is **47310**; applications can override it.
 | `CHANGELOG.md` | Changes per version |
 | `src/rope_protocol/` | Package: frame codec (`frames.py`), link simulator (`linksim.py`), durable store (`store.py`), sending and receiving side of streams (`sender.py`, `receiver.py`), messages (`messages.py`), offline media (`media.py`), participant list (`roster.py`), participants (`hub.py`, `source.py`, `consumer.py`, `recipient.py`, base `participant.py`) |
 | `tests/` | Unit tests and the fault-injection test bench (`framefault.py`, `test_faults.py`) |
+| `docs/vectors/` | Test vectors for every core frame type (valid and invalid frames) |
+| `conformance/` | Conformance suite for implementations in other languages: 22 scenarios, a scripted hub (`harness.py`) and the adapter for this package (`adapter_python.py`) |
 | `AGENTS.md` | Guidelines for contributors and coding agents |
 
 ## Testing
@@ -131,11 +144,16 @@ identical and every message exactly once. The full set of faults at every step r
 ROPE_SOAK=1 python -m pytest tests/test_faults.py
 ```
 
+The conformance suite (`python conformance/harness.py`, also part of `pytest`) checks an implementation against the
+frozen wire format with the same scenarios that this package passes.
+
 ## Limitations
 
-- Early development: streams, messages and offline media work. Interfaces and the wire format may still change.
-- Not a general file synchronisation tool and not meant for the internet.
-- No encryption, no authentication beyond a participant list.
+- Early development: streams, messages and offline media work. The Python interfaces may still change; the wire
+  format is frozen for 1.0 and changes only for corrections found in the field.
+- Not a general file synchronisation tool. Over the internet only inside TLS.
+- No encryption of its own and no authentication beyond the participant list (and the certificates, when TLS is
+  used).
 - Not compatible with CFDP or DTN software; only the ideas are borrowed.
 
 ## Contributing
