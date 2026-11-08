@@ -2,12 +2,12 @@ name: Release
 
 # Builds the package and publishes it with PyPI trusted publishing (no token in the repository).
 # - Manual run (Actions -> Release -> Run workflow): build and upload to TestPyPI only, as a rehearsal.
-# - Tag v<version> (e.g. v0.1.1): build, TestPyPI, then PyPI. The "pypi" environment requires the maintainer's
+# - Tag v<version> (e.g. v0.1.1; V0.1.1 works as well): build, TestPyPI, then PyPI. The "pypi" environment requires the maintainer's
 #   approval, so nothing reaches PyPI without it. A version on PyPI can never be uploaded again.
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["v*", "V*"]
   workflow_dispatch:
 
 permissions: {}
@@ -27,10 +27,11 @@ jobs:
       - name: Install build tools
         run: python -m pip install build twine
       - name: Tag matches the package version
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: (startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/V'))
         run: |
           version=$(python -c "import sys; sys.path.insert(0, 'src'); import rope_protocol; print(rope_protocol.__version__)")
-          test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME does not match version $version"; exit 1; }
+          tag=$(echo "$GITHUB_REF_NAME" | sed 's/^V/v/')
+          test "v$version" = "$tag" || { echo "tag $GITHUB_REF_NAME does not match version $version (tag the commit that sets the version)"; exit 1; }
       - name: Build sdist and wheel
         run: python -m build
       - name: Check the package
@@ -60,7 +61,7 @@ jobs:
 
   pypi:
     needs: testpypi
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: (startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/V'))
     runs-on: ubuntu-latest
     environment:
       name: pypi

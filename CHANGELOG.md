@@ -7,6 +7,9 @@ The package version is `rope_protocol.__version__`; the wire protocol has its ow
 
 ## [Unreleased]
 
+### Changed
+- Release workflow: a tag with a capital `V` (`V0.1.5`) starts the release as well as `v0.1.5`.
+
 ## [0.1.4] - 2026-11-08
 
 Wire format unchanged (`PROTOCOL_VERSION` 1).
