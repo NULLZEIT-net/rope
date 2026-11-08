@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import threading
+import time
 
 from . import PROTOCOL_VERSION, DEFAULT_PORT
 from . import frames as F
@@ -92,6 +93,11 @@ class Hub:
         self._mail = {}               # participant -> MessageSender of its current session
         self._stopped = False
         self.sessions_started = 0
+        # for connections(): participant -> (role, since in ms, channel, peer address) of its current session, and
+        # participant -> wall-clock ms when its last session ended (#43); read from any thread, hence the lock
+        self._live = {}
+        self._last_seen = {}
+        self._live_lock = threading.Lock()
 
     async def start(self):
         try:
@@ -116,6 +122,25 @@ class Hub:
         """Number of messages to the hub its application has not taken yet (for a status display)."""
         return len([r for r in self.messages.select(lambda r: r["state"].get("hub_told") is False)
                     if r["meta"]["id"] not in self._hub_told])
+
+    def connections(self):
+        """Participants with a session right now (#43): {identifier: {"role", "since", "last_heard_s", "address"}}.
+
+        ``since`` is the start of the session (wall-clock ms, for display only). ``last_heard_s`` is the time since
+        anything at all arrived from the participant, heartbeats included, on the monotonic clock - so it is not
+        affected when somebody sets the computer's clock. On a healthy link it stays below ``heartbeat_s``; during a
+        dropout it grows until the session ends at ``timeout_s``. ``address`` is the peer as "host:port"
+        (informational). A copy: safe to call from another thread."""
+        now = time.monotonic()
+        with self._live_lock:
+            return {p: dict(role=role, since=since, last_heard_s=round(max(0.0, now - ch.last_received), 3),
+                            address=address) for p, (role, since, ch, address) in self._live.items()}
+
+    def last_seen(self):
+        """{identifier: wall-clock ms} for participants whose session ended since this hub started and who have not
+        greeted again (#43), e.g. to show "last heard 12:41". A copy: safe to call from another thread."""
+        with self._live_lock:
+            return {p: t for p, t in self._last_seen.items() if p not in self._live}
 
     async def stop(self):
         # A connection accepted while stopping must not live on: a stopped hub would keep serving it, writing to the
@@ -184,6 +209,10 @@ class Hub:
                     pass
             self._sessions[participant] = asyncio.current_task()
             self.sessions_started += 1
+            peer = writer.get_extra_info("peername")
+            address = "%s:%s" % peer[:2] if isinstance(peer, tuple) and len(peer) >= 2 else None
+            with self._live_lock:
+                self._live[participant] = (m["role"], now_ms(), ch, address)
             ch.version = max(set(m["versions"]) & {PROTOCOL_VERSION})
             have = await asyncio.to_thread(self.store.have, participant)
             await ch.send(F.Frame(F.FrameType.WELCOME, dict(
@@ -218,6 +247,9 @@ class Hub:
             self._connections.discard(me)
             if participant and self._sessions.get(participant) is me:
                 del self._sessions[participant]
+                with self._live_lock:
+                    if self._live.pop(participant, None) is not None:
+                        self._last_seen[participant] = now_ms()
 
     def _check(self, m):
         p = m["participant"]
