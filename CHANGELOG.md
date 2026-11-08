@@ -7,6 +7,10 @@ The package version is `rope_protocol.__version__`; the wire protocol has its ow
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-11-08
+
+Wire format unchanged (`PROTOCOL_VERSION` 1).
+
 ### Added
 - `Hub.connections()`: which participants have a session right now, with role, session start, seconds since
   anything was last heard from them (monotonic clock, heartbeats included) and peer address. `Hub.last_seen()`:
@@ -95,7 +99,9 @@ First release (tag `v0.1.0`), wire protocol version 1. Development started on 20
   participant or hub at every step, a hard kill of the hub process, and a soak test over many random seeds. It found
   several real defects before the release; each is covered by a test that fails without the fix.
 
-[Unreleased]: https://github.com/NULLZEIT-net/rope/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/NULLZEIT-net/rope/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/NULLZEIT-net/rope/compare/v0.1.3...v0.1.4
+[0.1.3]: https://github.com/NULLZEIT-net/rope/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/NULLZEIT-net/rope/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/NULLZEIT-net/rope/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/NULLZEIT-net/rope/releases/tag/v0.1.0

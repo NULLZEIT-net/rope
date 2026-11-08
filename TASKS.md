@@ -22,6 +22,8 @@ _(see `docs/ideas.md`)_
 ## In progress
 
 ## Done
+- 2026-11-08 Version 0.1.4: `Hub.connections()` and `Hub.last_seen()` (#43); conformance suite with 22
+  scenarios (#32); normative wording of the spec (#31); a participant answers a bad frame with `ERROR`.
 - 2026-11-07 Version 0.1.3: announced operation (#27), test vectors, conformance suite (#32), spec 1.0 frozen
   parts (#31); first release from the NULLZEIT-net organisation (trusted publishing moved).
 - 2026-11-04 Version 0.1.2: optional TLS (spec 14.1, the application passes `ssl.SSLContext` objects); messages to the
