@@ -8,6 +8,10 @@ The package version is `rope_protocol.__version__`; the wire protocol has its ow
 ## [Unreleased]
 
 ### Added
+- `Hub.connections()`: which participants have a session right now, with role, session start, seconds since
+  anything was last heard from them (monotonic clock, heartbeats included) and peer address. `Hub.last_seen()`:
+  when the session of each participant that is not connected any more ended. Both are copies and may be called from
+  another thread, for a live status in the hub's application. No change of the wire format (#43).
 - Conformance suite: frame-level scenarios against a scripted hub. They cover a valid `HELLO`, the invalid test
   vectors (each answered with `ERROR` and the expected code), unknown core and extension types, and a `REJECT`
   with an announced operation (#32).

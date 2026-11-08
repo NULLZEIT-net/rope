@@ -343,6 +343,13 @@ verified; the number of messages held, how many wait for each recipient, and rec
 participant list. It only reads the state files and never writes, so it can run next to a working hub or on a copy.
 Not part of the wire format; applications may show the same in their own user interface.
 
+**Live connections (proposed, #43).** A running hub tells its application which participants have a session right
+now (`Hub.connections()`: role, session start, seconds since the participant was last heard, peer address) and when
+the sessions of the others ended (`Hub.last_seen()`). "Last heard" counts every frame, heartbeats included (§9), and
+uses the monotonic clock, so setting the computer's clock does not change it. On a healthy link it stays below
+`heartbeat_s`; during a dropout it grows until the session ends at `timeout_s`. No frames are added: the status comes
+from traffic that flows anyway. Not part of the wire format.
+
 ## 9. Interruptions and resumption
 
 Core idea: the data lives on the source's disk and the receiver knows its committed offset. An interruption costs time,
