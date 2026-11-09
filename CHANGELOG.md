@@ -7,6 +7,9 @@ The package version is `rope_protocol.__version__`; the wire protocol has its ow
 
 ## [Unreleased]
 
+### Added
+- `docs/api.md`: the Python API - hub, source, consumer, recipient, messages, offline media, participant list, TLS, status - with a quick start that is run as written.
+
 ### Changed
 - `SECURITY.md`: what ROPE guarantees (integrity against accidents) and the optional TLS wrapper (spec §14.1).
 - Release workflow: a tag with a capital `V` (`V0.1.5`) starts the release as well as `v0.1.5`.

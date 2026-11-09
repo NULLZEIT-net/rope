@@ -86,6 +86,9 @@ The package is named `rope-protocol` (import `rope_protocol`), because the name 
 well-known refactoring library. Versions and changes: [CHANGELOG.md](https://github.com/NULLZEIT-net/rope/blob/main/CHANGELOG.md). While ROPE is in early
 development, pin the version you tested with (e.g. `rope-protocol==0.1.4`).
 
+Using it in a program: [docs/api.md](https://github.com/NULLZEIT-net/rope/blob/main/docs/api.md) - hub, source,
+consumer, recipient, messages, offline media, TLS, with a quick start.
+
 For development:
 
 ```
@@ -122,6 +125,7 @@ ROPE's default port is **47310**; applications can override it.
 | Path | Content |
 |---|---|
 | `docs/spec.md` | Protocol specification (wire format and media format 1 frozen for 1.0) |
+| `docs/api.md` | Python API of the reference implementation |
 | `docs/decisions.md` | Decisions with date and reason |
 | `docs/ideas.md` | Ideas not yet planned |
 | `docs/images/` | Logo and symbol (SVG; light and dark variant) |
