@@ -115,7 +115,9 @@ No network: participants point at a port where nothing listens, and the bundles 
 | `hub_media_messages` | A message between two reference recipients through the hub by stick: told once, receipt and delivery report back to the sender. |
 | `hub_media_damaged_bundle`, `hub_media_cut_off_bundle` | The same damage, seen by the hub. |
 | `hub_media_repair` | The hub's final check of a stick fails (reported as a problem), its next bundle asks the source for a repair, and the differing block makes it verified. |
+| `media_consumer_repair` | The adapter's consumer holds the old header; after the hub was repaired, the consumer's final check fails (reported), its bundle asks the hub, and the hub's differing block makes it verified in generation 1. |
+| `hub_media_consumer_repair` | The same with the hub under test and a reference consumer: the hub answers the consumer's request with the differing block only. |
 
-## Planned
-- Bundles split into several files (above 1 GiB; the reference covers them in `tests/test_media.py`) and block repair
-  by stick from the hub to a consumer.
+## Not covered
+- Bundles split into several files: a file of the bundle holds at most 1 GiB (spec 8.6), so a test would write more
+  than 1 GiB per run. The reference covers the split in `tests/test_media.py` with a smaller limit.
