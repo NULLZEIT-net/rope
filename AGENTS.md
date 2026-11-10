@@ -17,6 +17,9 @@ small, closed, offline groups. Specification: `docs/spec.md`. Package `rope-prot
   internal planning. Examples use neutral names (`source-1`, `hub`, `tablet`).
 - **Spec first:** behaviour changes update `docs/spec.md` in the same pull request. Mark statements as
   **decided**, **proposed** or **assumed**.
+- **Formal model:** when the behaviour described in the spec changes, adapt the TLA+ models in `docs/model/` if
+  needed, run `python docs/model/check.py --mutations --record` (or the workflow `Model` by hand) and commit the new
+  `docs/model/RESULTS.md`. Not part of every pull request.
 - **Tests with the code:** every feature comes with tests; protocol behaviour is tested under faults
   (disconnect, delay, restart, duplicates, damage). Pass criterion: bit-for-bit identical streams, every message exactly
   once.

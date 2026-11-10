@@ -1,0 +1,32 @@
+name: Model
+
+# Checks the TLA+ models of the protocol (docs/model/) with TLC, including the mutation checks.
+# Not on every change: started by hand (Actions -> Model -> Run workflow) from time to time, in particular when the
+# behaviour described in the spec changes (AGENTS.md).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tlc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: TLA+ tools (pinned release and checksum)
+        run: |
+          curl -fsSL -o tla2tools.jar https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar
+          echo "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88  tla2tools.jar" | sha256sum -c -
+      - name: Model checks and mutation checks
+        env:
+          TLA2TOOLS: ${{ github.workspace }}/tla2tools.jar
+        run: python docs/model/check.py --mutations

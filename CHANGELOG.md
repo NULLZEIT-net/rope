@@ -8,6 +8,14 @@ The package version is `rope_protocol.__version__`; the wire protocol has its ow
 ## [Unreleased]
 
 ### Added
+- **Formal model of the design** (`docs/model/`, TLA+): one stream from a source to the hub (resume after
+  disconnects and crashes, offline media at the same time, final check) and messages with custody (sender, hub,
+  recipient over network and media, crashes, delivery reports). TLC checks every reachable state within small bounds:
+  bit for bit, nothing acknowledged that is not stored, nothing lost, told at most once, and that the stream and every
+  message arrive in the end. 12 mutation checks break one rule each on purpose; all are found. Results in
+  `docs/model/RESULTS.md`; `docs/model/check.py` runs everything, also as the workflow `Model`, started by hand
+  from time to time and when the behaviour in the spec changes (`AGENTS.md`). No change of the wire format or the
+  spec was needed.
 - Conformance suite: three scenarios for a **consumer over TCP**: disconnects, restart with `HELLO.have`, block
   repair at the consumer (spec 14.7). Found missing while writing the consumer of rope-rs (#33). 60 scenarios in all.
 - Conformance suite: **offline media** (#32). New adapter commands `export_media` and `import_media`; 17 scenarios

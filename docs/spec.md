@@ -458,6 +458,11 @@ a small adapter (JSON lines on stdin/stdout), against the reference hub and the 
 also tests a hub implementation, against reference participants, and offline media (8.6) for both roles. See
 `conformance/README.md` for the adapter commands and the scenarios.
 
+**Formal model (proposed, 2026-11-10):** `docs/model/` holds TLA+ models of the design – one stream with resume,
+offline media and the final check, and messages with custody over network and media – checked with TLC in every
+reachable state within small bounds, plus mutation checks that each broken rule is found. Results:
+`docs/model/RESULTS.md`. The models check the design, not the code.
+
 A custom protocol brings custom bugs, so faults are produced in tests rather than discovered in the field. The test
 bench runs on Windows and Linux in CI (**decided**):
 

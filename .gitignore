@@ -10,3 +10,7 @@ venv/
 htmlcov/
 .idea/
 .vscode/
+
+# TLA+ model checker: the tool and its state files (docs/model/check.py)
+docs/model/tla2tools.jar
+docs/model/states/
