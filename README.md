@@ -134,6 +134,7 @@ ROPE's default port is **47310**; applications can override it.
 | `src/rope_protocol/` | Package: frame codec (`frames.py`), link simulator (`linksim.py`), durable store (`store.py`), sending and receiving side of streams (`sender.py`, `receiver.py`), messages (`messages.py`), offline media (`media.py`), participant list (`roster.py`), participants (`hub.py`, `source.py`, `consumer.py`, `recipient.py`, base `participant.py`) |
 | `tests/` | Unit tests and the fault-injection test bench (`framefault.py`, `test_faults.py`) |
 | `docs/vectors/` | Test vectors for every core frame type (valid and invalid frames) |
+| `docs/model/` | Formal model of the design in TLA+, checked with TLC in every reachable state within small bounds; results in `docs/model/RESULTS.md` |
 | `conformance/` | Conformance suite for implementations in other languages: 60 scenarios for the participant and the hub roles, over TCP and by offline media, a scripted hub and participant (`harness.py`) and the adapter for this package (`adapter_python.py`) |
 | `AGENTS.md` | Guidelines for contributors and coding agents |
 

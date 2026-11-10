@@ -23,6 +23,10 @@ _(see `docs/ideas.md`)_
 ## In progress
 
 ## Done
+- 2026-11-10 Formal model of the design in TLA+ (`docs/model/`): one stream (resume, offline media, final check) and
+  messages with custody (network and media); every reachable state checked with TLC, 12 of 12 mutation checks found;
+  results in `docs/model/RESULTS.md`, workflow `model.yml` by hand when the spec changes. Next candidates: block
+  repair, relay to several consumers.
 - 2026-11-10 Conformance suite: offline media for both roles (#32): in parts, damaged, cut off, block
   repair by stick (source to hub, hub to consumer); 57 scenarios in all.
 - 2026-11-10 Conformance suite: the hub role under test (#32), 40 scenarios in all.
