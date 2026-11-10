@@ -151,6 +151,9 @@ ROPE_SOAK=1 python -m pytest tests/test_faults.py
 The conformance suite (`python conformance/harness.py`, also part of `pytest`) checks an implementation against the
 frozen wire format with the same scenarios that this package passes.
 
+**Other implementations:** [rope-rs](https://github.com/NULLZEIT-net/rope-rs) (Rust, early development: frame codec
+and source role) runs this suite in its CI (#33).
+
 ## Limitations
 
 - Early development: streams, messages and offline media work. The Python interfaces may still change; the wire

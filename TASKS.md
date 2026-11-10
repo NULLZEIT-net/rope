@@ -15,9 +15,10 @@ _(see `docs/ideas.md`)_
 
 
 - [ ] **Offline media:** help for clearing sticks (spec §8.6, open point).
-- [ ] **Implementations in other languages** (#33): first #31 spec 1.0 (freeze the wire format) and #32
-      language-independent conformance suite; then Rust, Java/Kotlin, Node.js (participant roles first) and an
-      Ada/SPARK core with proofs.
+- [ ] **Implementations in other languages** (#33): the conformance suite (#32) is done; Rust started in
+      [NULLZEIT-net/rope-rs](https://github.com/NULLZEIT-net/rope-rs) (2026-11-10: frame codec and source role,
+      17 scenarios pass); then Java/Kotlin, Node.js (participant roles first) and an Ada/SPARK core with proofs.
+      Spec 1.0 (#31) still waits for field experience over radio.
 
 ## In progress
 
