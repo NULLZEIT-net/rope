@@ -806,10 +806,213 @@ HUB_SCENARIOS = [hub_from_source, hub_from_source_disconnects, hub_restart, hub_
                                                                  hub_frame_extension_ignored]
 
 
+# --- offline media (spec 8.6) ------------------------------------------------------------------------------------------
+# No network at all: bundles travel through a folder (the "stick"). Participants point at a port where nothing listens,
+# the reference hub is not started. Media format 1 is frozen, so the bundles of both sides must be interchangeable.
+
+NOWHERE = "127.0.0.1:1"
+MEDIA_DATA = 1_500_000                                  # more than one segment of 1 MiB on the medium
+
+
+def _ref_hub(tmp, participants):
+    return Hub(os.path.join(tmp, "ref-hub"), participants, OP, **HUB)          # not started: no network
+
+
+def _ref(cls, participant, tmp, *args, **kw):
+    return cls(participant, OP, "127.0.0.1", *args, hub_port=1, **kw)          # not started either
+
+
+async def _imported(a, medium, bundles):
+    ans = await a.call("import_media", medium=medium)
+    check(ans["bundles"] == bundles, "imported %s bundles, expected %d" % (ans["bundles"], bundles))
+    check(ans["problems"] == [], "import problems: %s" % ans["problems"])
+    return ans
+
+
+def _hub_holds(hub, participant, stream):
+    e = next((e for e in hub.store.entries() if (e["participant"], e["stream"]) == (participant, stream)), None)
+    return e
+
+
+async def media_source(a, tmp):
+    """The adapter's source writes a bundle; the reference hub imports it bit for bit and verified; the hub's answer
+    (ACK) makes the next bundle of the source empty of stream data."""
+    data = os.urandom(MEDIA_DATA)
+    path, stick = _file(tmp, "rec-0001.dat", data), os.path.join(tmp, "stick")
+    hub = _ref_hub(tmp, {"source-1": "source"})
+    await a.call("start_source", participant="source-1", operation=OP, hub=NOWHERE,
+                 files={"rec-0001.dat": path}, dir=os.path.join(tmp, "src"))
+    await a.call("complete", stream="rec-0001.dat")
+    out = await a.call("export_media", medium=stick)
+    check(out["complete"] and out["stream_bytes"] == len(data), "bundle of the source: %s" % out)
+    [rep] = await hub.import_media(stick)
+    check(rep.ok, "reference hub: %s" % rep.problems)
+    check([c[:4] for c in rep.checked] == [("source-1", "rec-0001.dat", 1, "ok")], "final check: %s" % rep.checked)
+    e = _hub_holds(hub, "source-1", "rec-0001.dat")
+    check(_content(e["path"]) == data, "stream at the hub differs")
+    await hub.export_media(stick, "source-1")
+    await _imported(a, stick, 1)                        # only the hub's bundle is for the source
+    again = await a.call("export_media", medium=stick)
+    check(again["stream_bytes"] == 0, "the source sends %d bytes again after the hub's ACK" % again["stream_bytes"])
+
+
+async def media_consumer(a, tmp):
+    """A stream of a reference source reaches the adapter's consumer by stick only, verified."""
+    data = os.urandom(MEDIA_DATA)
+    path, stick = _file(tmp, "rec-0001.dat", data), os.path.join(tmp, "stick")
+    hub = _ref_hub(tmp, {"source-1": "source", "c-1": "consumer"})
+    src = _ref(Source, "source-1", tmp, {"rec-0001.dat": path}, os.path.join(tmp, "ref-src"))
+    src.complete("rec-0001.dat")
+    await src.export_media(stick)
+    await hub.import_media(stick)
+    await hub.export_media(stick, "c-1")
+    await a.call("start_consumer", participant="c-1", operation=OP, hub=NOWHERE, dir=os.path.join(tmp, "c"))
+    await _imported(a, stick, 1)
+    st = await a.call("status")
+    got = next((s for s in st["streams"] if s["stream"] == "source-1/rec-0001.dat"), None)
+    check(got is not None and got["verified"] == "ok", "relayed stream at the consumer: %s" % got)
+    check(_content(got["path"]) == data, "relayed stream differs")
+
+
+async def media_message_to_adapter(a, tmp):
+    """A message by stick is told exactly once, also when the bundle is imported again; the receipt goes back."""
+    body = "Grüße – ✓".encode("utf-8")
+    stick = os.path.join(tmp, "stick")
+    hub = _ref_hub(tmp, {"source-1": "source", "r-1": "recipient"})
+    src = _ref(Source, "source-1", tmp, {}, os.path.join(tmp, "ref-src"))
+    msg_id = src.send_message(["r-1"], "note", body)
+    await src.export_media(stick)
+    await hub.import_media(stick)
+    await hub.export_media(stick, "r-1")
+    await a.call("start_recipient", participant="r-1", operation=OP, hub=NOWHERE, dir=os.path.join(tmp, "r"))
+    await _imported(a, stick, 1)
+    await a.call("import_media", medium=stick)          # the same bundle again
+    st = await a.until(lambda s: s["told"].get(msg_id), "message not told")
+    await asyncio.sleep(0.5)
+    st = await a.call("status")
+    check(st["told"].get(msg_id) == 1, "message told %s times" % st["told"].get(msg_id))
+    got = next(m for m in st["inbox"] if m["id"] == msg_id)
+    check(bytes.fromhex(got["body_hex"]) == body and got["from"] == "source-1", "message content differs")
+    await a.call("export_media", medium=stick)
+    await hub.import_media(stick)
+    check(hub.message_status(msg_id)["delivered"] == ["r-1"], "receipt did not reach the hub: %s"
+          % hub.message_status(msg_id))
+
+
+async def media_message_from_adapter(a, tmp):
+    """A message of the adapter goes by stick to the hub and on to a reference recipient, exactly once."""
+    stick = os.path.join(tmp, "stick")
+    told = []
+    hub = _ref_hub(tmp, {"r-1": "recipient", "r-2": "recipient"})
+    await a.call("start_recipient", participant="r-1", operation=OP, hub=NOWHERE, dir=os.path.join(tmp, "r"))
+    msg_id = (await a.call("send_message", to=["r-2"], kind="note", body_hex=b"by stick".hex()))["id"]
+    out = await a.call("export_media", medium=stick)
+    check(out["messages"] == 1, "bundle of the adapter holds %s messages" % out["messages"])
+    [rep] = await hub.import_media(stick)
+    check(rep.ok and [m["id"] for m in rep.messages] == [msg_id], "hub import: %s %s" % (rep.problems, rep.messages))
+    await hub.export_media(stick, "r-2")
+    r2 = _ref(Recipient, "r-2", tmp, os.path.join(tmp, "ref-r2"), on_message=lambda m, body: told.append((m, body)))
+    await r2.import_media(stick)
+    await r2.import_media(stick)
+    check(len(told) == 1 and told[0][0]["id"] == msg_id and told[0][1] == b"by stick",
+          "reference recipient was told %d times" % len(told))
+    await hub.export_media(stick, "r-1")                # receipt and delivery report back to the adapter
+    await _imported(a, stick, 1)
+
+
+async def media_foreign_bundle(a, tmp):
+    """A bundle for another participant is left alone: nothing imported, nothing told."""
+    stick = os.path.join(tmp, "stick")
+    hub = _ref_hub(tmp, {"source-1": "source", "r-1": "recipient", "r-2": "recipient"})
+    src = _ref(Source, "source-1", tmp, {}, os.path.join(tmp, "ref-src"))
+    src.send_message(["r-2"], "note", b"not for r-1")
+    await src.export_media(stick)
+    await hub.import_media(stick)
+    await hub.export_media(stick, "r-2")
+    await a.call("start_recipient", participant="r-1", operation=OP, hub=NOWHERE, dir=os.path.join(tmp, "r"))
+    ans = await a.call("import_media", medium=stick)
+    check(ans["bundles"] == 0, "imported %d bundles meant for others" % ans["bundles"])
+    st = await a.call("status")
+    check(not st["told"] and not st["inbox"], "a message for another participant was told")
+
+
+async def _start_hub_alone(a, tmp, participants):
+    await a.call("start_hub", operation=OP, participants=participants, dir=os.path.join(tmp, "hub"), port=0, **HUB)
+
+
+async def hub_media_from_source(a, tmp):
+    """The hub imports a bundle of a reference source bit for bit and verified, a second import changes nothing, and
+    its bundle for the source acknowledges the stream."""
+    data = os.urandom(MEDIA_DATA)
+    path, stick = _file(tmp, "rec-0001.dat", data), os.path.join(tmp, "stick")
+    await _start_hub_alone(a, tmp, {"source-1": "source"})
+    src = _ref(Source, "source-1", tmp, {"rec-0001.dat": path}, os.path.join(tmp, "ref-src"))
+    src.complete("rec-0001.dat")
+    await src.export_media(stick)
+    await _imported(a, stick, 1)
+    await _imported(a, stick, 1)                        # again: nothing new, no problem
+    st = await a.call("status")
+    got = [s for s in st["streams"] if s["participant"] == "source-1" and s["stream"] == "rec-0001.dat"]
+    check(len(got) == 1, "hub holds %d generations" % len(got))
+    check(got[0]["committed"] == len(data) and got[0]["verified"] == "ok", "hub reports %s" % got[0])
+    check(_content(got[0]["path"]) == data, "stream at the hub differs")
+    check(st["checked"].get("source-1/rec-0001.dat") == "ok", "final check not told: %s" % st["checked"])
+    await a.call("export_media", medium=stick, participant="source-1")
+    [rs] = await src.import_media(stick)
+    check(rs.ok and rs.acks == [("rec-0001.dat", 1, len(data))], "source learned %s %s" % (rs.acks, rs.problems))
+
+
+async def hub_media_to_consumer(a, tmp):
+    """A stream that reached the hub by stick goes on to a reference consumer by stick, verified."""
+    data = os.urandom(MEDIA_DATA)
+    path, stick = _file(tmp, "rec-0001.dat", data), os.path.join(tmp, "stick")
+    await _start_hub_alone(a, tmp, {"source-1": "source", "c-1": "consumer"})
+    src = _ref(Source, "source-1", tmp, {"rec-0001.dat": path}, os.path.join(tmp, "ref-src"))
+    src.complete("rec-0001.dat")
+    await src.export_media(stick)
+    await _imported(a, stick, 1)
+    await a.call("export_media", medium=stick, participant="c-1")
+    con = _ref(Consumer, "c-1", tmp, os.path.join(tmp, "ref-c"))
+    [rc] = await con.import_media(stick)
+    check(rc.ok, "consumer import: %s" % rc.problems)
+    got = next((s for s in con.streams() if s["stream"] == "source-1/rec-0001.dat"), None)
+    check(got is not None and got["verified"] == "ok", "relayed stream at the consumer: %s" % got)
+    check(_content(got["path"]) == data, "relayed stream differs")
+
+
+async def hub_media_messages(a, tmp):
+    """A message from r-1 to r-2 travels by stick through the hub, is told once, and the delivery report returns."""
+    stick = os.path.join(tmp, "stick")
+    told = []
+    await _start_hub_alone(a, tmp, {"r-1": "recipient", "r-2": "recipient"})
+    r1 = _ref(Recipient, "r-1", tmp, os.path.join(tmp, "ref-r1"))
+    r2 = _ref(Recipient, "r-2", tmp, os.path.join(tmp, "ref-r2"), on_message=lambda m, body: told.append((m, body)))
+    msg_id = r1.send_message(["r-2"], "note", b"by stick")
+    await r1.export_media(stick)
+    await _imported(a, stick, 1)
+    await a.call("export_media", medium=stick, participant="r-2")
+    await r2.import_media(stick)
+    await r2.import_media(stick)
+    check(len(told) == 1 and told[0][0]["id"] == msg_id and told[0][1] == b"by stick",
+          "r-2 was told %d times" % len(told))
+    await r2.export_media(stick)                        # receipt to the hub
+    await a.call("import_media", medium=stick)
+    await a.call("export_media", medium=stick, participant="r-1")
+    await r1.import_media(stick)
+    out = next(m for m in r1.outbox() if m["id"] == msg_id)
+    check(out["at_hub"], "r-1 does not know that the hub holds its message")
+    check("r-2" in ((out["report"] or {}).get("delivered") or ()), "delivery report at r-1: %s" % out["report"])
+
+
+MEDIA_SCENARIOS = [media_source, media_consumer, media_message_to_adapter, media_message_from_adapter,
+                   media_foreign_bundle, hub_media_from_source, hub_media_to_consumer, hub_media_messages]
+
+
 SCENARIOS = [source_basic, source_disconnects, source_restart, source_repair, source_new_generation, reject_unknown,
              reject_wrong_operation, reject_role, consumer_relay, message_to_adapter, message_from_adapter,
              messages_to_adapter_disconnects, messages_from_adapter_disconnects, frame_hello] + BAD_VECTORS + [
-                 frame_unknown_core_type, frame_extension_ignored, frame_reject_announced] + HUB_SCENARIOS
+                 frame_unknown_core_type, frame_extension_ignored, frame_reject_announced] + HUB_SCENARIOS \
+    + MEDIA_SCENARIOS
 
 
 async def run(adapter_cmd, only=None, out=print):
