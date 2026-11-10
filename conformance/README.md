@@ -3,7 +3,8 @@
 A language-independent check that a ROPE implementation speaks the protocol of `docs/spec.md` (#32), over TCP, with
 the link simulator in between. It tests both roles:
 - a **participant** (source, consumer, recipient) against the Python reference hub;
-- a **hub** against Python reference participants (since 2026-11-10).
+- a **hub** against Python reference participants (since 2026-11-10);
+- both roles with **offline media** (spec 8.6): bundles through a folder, without any network (since 2026-11-10).
 
 Status: **proposed**, first scenarios only (2026-11-06). The interface may still change until spec 1.0 (#31).
 
@@ -39,6 +40,8 @@ An implementation provides a small program, the **adapter**:
 | `add_stream` | `stream`, `path` | source: follow one more file |
 | `complete` | `stream` | source: declare the stream complete; the result of the final check appears in `status` |
 | `send_message` | `to` (list), `kind`, `body_hex` | store a message; answer carries its `id` |
+| `export_media` | `medium` (folder), `participant` (hub only: for whom), `max_bytes` (optional) | write one bundle (media format 1); answer: `complete`, `stream_bytes`, `messages` |
+| `import_media` | `medium` | import every bundle on the medium addressed to this participant or hub; answer: `bundles` (how many), `problems` (plain-language texts, empty when all was accepted) |
 | `status` | – | answer: `running`, `connected`, `rejected` (`{code, operation}` or null), `checked` ({stream: "ok" / "mismatch"}), `told` ({message id: how often the application was told}), `inbox` ([{id, from, kind, body_hex}]), `streams` (consumer: [{stream, gen, committed, verified, path}]) |
 | `status` of a hub | – | answer: `running`, `connected` (any session), `sessions` ([identifier]), `checked` ({"source/stream": result of the final check}), `told`, `inbox` (messages told to the hub), `streams` ([{participant, stream, gen, committed, complete, verified, path}], `path`: the stored bytes) |
 | `stop` | – | stop the participant or hub, keep its state on disk (a later `start_*` with the same `dir` continues) |
@@ -92,5 +95,21 @@ how an implementation handles frames the reference hub would never send.
 The `hub_frame_*` scenarios use a **scripted participant** that connects to the hub directly, without the link
 simulator.
 
+### Offline media
+
+No network: participants point at a port where nothing listens, and the bundles travel through a folder. Media format
+1 is frozen, so the bundles of the implementation under test and of the reference must be interchangeable.
+
+| Name | Checks |
+|---|---|
+| `media_source` | The adapter's source writes a bundle; the reference hub imports it bit for bit with final check `ok`; after the hub's answer the next bundle carries no stream data again. |
+| `media_consumer` | A relayed stream reaches the adapter's consumer by stick only, verified. |
+| `media_message_to_adapter` | A message by stick is told exactly once, also when the bundle is imported twice; the receipt reaches the hub. |
+| `media_message_from_adapter` | A message of the adapter reaches a reference recipient through the hub by stick, exactly once. |
+| `media_foreign_bundle` | A bundle for another participant is not imported. |
+| `hub_media_from_source` | The hub imports a source's bundle bit for bit and verified, a second import changes nothing, and its bundle acknowledges the stream to the source. |
+| `hub_media_to_consumer` | A stream that came by stick goes on to a reference consumer by stick, verified. |
+| `hub_media_messages` | A message between two reference recipients through the hub by stick: told once, receipt and delivery report back to the sender. |
+
 ## Planned
-- Offline media bundles (§8.6): new adapter commands to export and import a bundle, for both roles.
+- Damaged, cut-off and split bundles (the reference covers them in `tests/test_media.py`), block repair by stick.

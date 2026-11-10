@@ -74,6 +74,16 @@ class Adapter:
             return {}
         if cmd == "send_message":
             return {"id": self.p.send_message(c["to"], c["kind"], bytes.fromhex(c["body_hex"]))}
+        if cmd == "export_media":
+            limit = c.get("max_bytes")
+            if isinstance(self.p, Hub):
+                rep = await self.p.export_media(c["medium"], c["participant"], limit)
+            else:
+                rep = await self.p.export_media(c["medium"], limit)
+            return {"complete": rep.complete, "stream_bytes": rep.stream_bytes, "messages": rep.messages}
+        if cmd == "import_media":
+            reports = await self.p.import_media(c["medium"])
+            return {"bundles": len(reports), "problems": [p for r in reports for p in r.problems]}
         if cmd == "status":
             return self.status()
         if cmd == "stop":
