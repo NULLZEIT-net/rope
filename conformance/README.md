@@ -40,7 +40,7 @@ An implementation provides a small program, the **adapter**:
 | `add_stream` | `stream`, `path` | source: follow one more file |
 | `complete` | `stream` | source: declare the stream complete; the result of the final check appears in `status` |
 | `send_message` | `to` (list), `kind`, `body_hex` | store a message; answer carries its `id` |
-| `export_media` | `medium` (folder), `participant` (hub only: for whom), `max_bytes` (optional) | write one bundle (media format 1); answer: `complete`, `stream_bytes`, `messages` |
+| `export_media` | `medium` (folder), `participant` (hub only: for whom), `max_bytes` (optional) | write one bundle (media format 1); answer: `complete` (false when `max_bytes` stopped it), `stream_bytes`, `messages`, `repair_bytes`, `path` (the bundle folder) |
 | `import_media` | `medium` | import every bundle on the medium addressed to this participant or hub; answer: `bundles` (how many), `problems` (plain-language texts, empty when all was accepted) |
 | `status` | – | answer: `running`, `connected`, `rejected` (`{code, operation}` or null), `checked` ({stream: "ok" / "mismatch"}), `told` ({message id: how often the application was told}), `inbox` ([{id, from, kind, body_hex}]), `streams` (consumer: [{stream, gen, committed, verified, path}]) |
 | `status` of a hub | – | answer: `running`, `connected` (any session), `sessions` ([identifier]), `checked` ({"source/stream": result of the final check}), `told`, `inbox` (messages told to the hub), `streams` ([{participant, stream, gen, committed, complete, verified, path}], `path`: the stored bytes) |
@@ -107,9 +107,15 @@ No network: participants point at a port where nothing listens, and the bundles 
 | `media_message_to_adapter` | A message by stick is told exactly once, also when the bundle is imported twice; the receipt reaches the hub. |
 | `media_message_from_adapter` | A message of the adapter reaches a reference recipient through the hub by stick, exactly once. |
 | `media_foreign_bundle` | A bundle for another participant is not imported. |
+| `media_source_in_parts` | A stick too small for the recording: the source writes what fits, learns from the hub's answer what arrived and continues there; the hub ends bit for bit. |
+| `media_damaged_bundle`, `media_cut_off_bundle` | A bundle with one changed byte, or one that ends in the middle: the import reports a problem, takes nothing as complete, keeps only correct bytes; a good copy completes the stream. |
+| `media_repair` | The recording's header changes after the data left by stick: the hub's bundle asks for a repair, the adapter answers with the differing block only, the hub ends verified (spec 14.7). |
 | `hub_media_from_source` | The hub imports a source's bundle bit for bit and verified, a second import changes nothing, and its bundle acknowledges the stream to the source. |
 | `hub_media_to_consumer` | A stream that came by stick goes on to a reference consumer by stick, verified. |
 | `hub_media_messages` | A message between two reference recipients through the hub by stick: told once, receipt and delivery report back to the sender. |
+| `hub_media_damaged_bundle`, `hub_media_cut_off_bundle` | The same damage, seen by the hub. |
+| `hub_media_repair` | The hub's final check of a stick fails (reported as a problem), its next bundle asks the source for a repair, and the differing block makes it verified. |
 
 ## Planned
-- Damaged, cut-off and split bundles (the reference covers them in `tests/test_media.py`), block repair by stick.
+- Bundles split into several files (above 1 GiB; the reference covers them in `tests/test_media.py`) and block repair
+  by stick from the hub to a consumer.

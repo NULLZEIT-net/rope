@@ -8,9 +8,10 @@ The package version is `rope_protocol.__version__`; the wire protocol has its ow
 ## [Unreleased]
 
 ### Added
-- Conformance suite: **offline media** (#32). New adapter commands `export_media` and `import_media`; 8 scenarios
+- Conformance suite: **offline media** (#32). New adapter commands `export_media` and `import_media`; 15 scenarios
   for both roles without any network: streams to the hub and on to a consumer, messages both ways with receipts and
-  delivery reports, a second import changes nothing, a bundle for someone else is left alone. 48 scenarios in all.
+  delivery reports, a second import changes nothing, a bundle for someone else is left alone; a stick too small for
+  everything, damaged and cut-off bundles, and block repair by stick (spec 14.7). 55 scenarios in all.
 - Conformance suite: the **hub role** under test (#32). New adapter command `start_hub`; 18 scenarios with reference
   participants: streams with disconnects, restart and block repair, relay to a consumer, messages with delivery
   reports and to the hub itself, rejects, and damaged frames from a scripted participant. 40 scenarios in all.
