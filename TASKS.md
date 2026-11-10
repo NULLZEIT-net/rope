@@ -23,7 +23,7 @@ _(see `docs/ideas.md`)_
 
 ## Done
 - 2026-11-10 Conformance suite: offline media for both roles (#32): in parts, damaged, cut off, block
-  repair by stick; 55 scenarios in all.
+  repair by stick (source to hub, hub to consumer); 57 scenarios in all.
 - 2026-11-10 Conformance suite: the hub role under test (#32), 40 scenarios in all.
 - 2026-11-08 Version 0.1.4: `Hub.connections()` and `Hub.last_seen()` (#43); conformance suite with 22
   scenarios (#32); normative wording of the spec (#31); a participant answers a bad frame with `ERROR`.

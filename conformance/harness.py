@@ -1186,10 +1186,102 @@ async def hub_media_repair(a, tmp):
     check(got["gen"] == 1 and _content(got["path"]) == bytes(data), "hub holds %s" % got)
 
 
+async def _hub_repaired_by_source(hub_import, hub_export, src, path, data, stick, first):
+    """Header change at the source after the first trip; the source repairs the hub by stick. ``hub_import(medium)``
+    and ``hub_export(medium, participant)`` drive the hub (reference or adapter). Returns the next stick number."""
+    data[2:6] = HEADER
+    with open(path, "r+b") as f:
+        f.seek(2)
+        f.write(HEADER)
+    src.complete("rec-0001.dat")
+    n = first
+    for step in ("check", "request", "repair"):
+        if step == "request":
+            await hub_export(stick(n), "source-1")
+            await src.import_media(stick(n))
+        else:
+            await src.export_media(stick(n))
+            await hub_import(stick(n))
+        n += 1
+    return n
+
+
+def _consumer_stream(streams):
+    return next((s for s in streams if s["stream"] == "source-1/rec-0001.dat"), None)
+
+
+async def media_consumer_repair(a, tmp):
+    """The adapter's consumer got the old header by stick; after the hub was repaired, the consumer's final check
+    fails, its next bundle asks the hub for a repair, and the hub's differing block makes it verified (spec 14.7)."""
+    data = bytearray(os.urandom(3 * MIB))
+    path = _file(tmp, "rec-0001.dat", bytes(data))
+    stick = lambda n: os.path.join(tmp, "stick%d" % n)         # noqa: E731
+    hub = _ref_hub(tmp, {"source-1": "source", "c-1": "consumer"})
+    src = _ref(Source, "source-1", tmp, {"rec-0001.dat": path}, os.path.join(tmp, "ref-src"))
+    await a.call("start_consumer", participant="c-1", operation=OP, hub=NOWHERE, dir=os.path.join(tmp, "c"))
+    await src.export_media(stick(1))
+    await hub.import_media(stick(1))
+    await hub.export_media(stick(2), "c-1")
+    await _imported(a, stick(2), 1)                     # the old header, not complete yet
+    n = await _hub_repaired_by_source(hub.import_media, hub.export_media, src, path, data, stick, 3)
+    check(_hub_holds(hub, "source-1", "rec-0001.dat")["verified"] == "ok", "reference hub was not repaired")
+    await hub.export_media(stick(n), "c-1")
+    ans = await a.call("import_media", medium=stick(n))
+    check(ans["problems"], "the consumer's failed final check was not reported")
+    got = _consumer_stream((await a.call("status"))["streams"])
+    check(got is not None and got["verified"] == "mismatch", "consumer before the repair: %s" % got)
+    await a.call("export_media", medium=stick(n + 1))
+    await hub.import_media(stick(n + 1))
+    out = await hub.export_media(stick(n + 2), "c-1")
+    check(0 < out.repair_bytes <= MIB, "the consumer's bundle did not ask for a repair (%d bytes)" % out.repair_bytes)
+    await _imported(a, stick(n + 2), 1)
+    got = _consumer_stream((await a.call("status"))["streams"])
+    check(got["verified"] == "ok" and got["gen"] == 1 and _content(got["path"]) == bytes(data),
+          "consumer after the repair: %s" % got)
+
+
+async def hub_media_consumer_repair(a, tmp):
+    """The hub under test repairs a reference consumer by stick: the consumer asks, the hub sends the differing
+    block only, and the consumer ends verified in generation 1 (spec 14.7)."""
+    data = bytearray(os.urandom(3 * MIB))
+    path = _file(tmp, "rec-0001.dat", bytes(data))
+    stick = lambda n: os.path.join(tmp, "stick%d" % n)         # noqa: E731
+    await _start_hub_alone(a, tmp, {"source-1": "source", "c-1": "consumer"})
+    src = _ref(Source, "source-1", tmp, {"rec-0001.dat": path}, os.path.join(tmp, "ref-src"))
+    con = _ref(Consumer, "c-1", tmp, os.path.join(tmp, "ref-c"))
+
+    async def hub_import(medium):
+        await a.call("import_media", medium=medium)
+
+    async def hub_export(medium, participant):
+        return await a.call("export_media", medium=medium, participant=participant)
+
+    await src.export_media(stick(1))
+    await hub_import(stick(1))
+    await hub_export(stick(2), "c-1")
+    await con.import_media(stick(2))
+    n = await _hub_repaired_by_source(hub_import, hub_export, src, path, data, stick, 3)
+    st = await a.call("status")
+    check(st["checked"].get("source-1/rec-0001.dat") == "ok", "hub was not repaired: %s" % st["checked"])
+    await hub_export(stick(n), "c-1")
+    [rep] = await con.import_media(stick(n))
+    check([c[3] for c in rep.checked] == ["mismatch"], "consumer's final check: %s" % rep.checked)
+    out = await con.export_media(stick(n + 1))
+    check(out.repair_requests == 1, "reference consumer did not ask for a repair")
+    await hub_import(stick(n + 1))
+    out = await hub_export(stick(n + 2), "c-1")
+    check(0 < out["repair_bytes"] <= MIB, "hub sent %d repair bytes" % out["repair_bytes"])
+    [rep] = await con.import_media(stick(n + 2))
+    got = _consumer_stream(con.streams())
+    check(rep.ok and got["verified"] == "ok" and got["gen"] == 1 and _content(got["path"]) == bytes(data),
+          "consumer after the repair: %s %s" % (got, rep.problems))
+
+
 MEDIA_SCENARIOS = [media_source, media_consumer, media_message_to_adapter, media_message_from_adapter,
                    media_foreign_bundle, media_source_in_parts, media_damaged_bundle, media_cut_off_bundle,
                    media_repair, hub_media_from_source, hub_media_to_consumer, hub_media_messages,
-                   hub_media_damaged_bundle, hub_media_cut_off_bundle, hub_media_repair]
+                   hub_media_damaged_bundle, hub_media_cut_off_bundle, hub_media_repair,
+                   media_consumer_repair, hub_media_consumer_repair]
 
 
 SCENARIOS = [source_basic, source_disconnects, source_restart, source_repair, source_new_generation, reject_unknown,
