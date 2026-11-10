@@ -64,6 +64,9 @@ like any participant. It should reconnect quickly, with a back-off of at most ab
 | `reject_unknown` | A participant not on the list is rejected with `unknown_participant` and stores nothing. |
 | `reject_wrong_operation`, `reject_role` | The same for another operation (`wrong_operation`) and a role that does not match the list (`role`), spec 14.10. |
 | `consumer_relay` | A relayed stream of a reference source arrives bit for bit and verified. |
+| `consumer_disconnects` | The same, through a slow link with two disconnects and a blackout. |
+| `consumer_restart` | The consumer is stopped mid-stream and started again on the same state: it reports what it holds in `HELLO.have`, the hub continues there, no second generation. |
+| `consumer_repair` | The source changes a header after the consumer received it: the hub is repaired first, then the consumer's final check fails, its `BLOCK_SUMS` make the hub resend the differing block, and the consumer ends verified (spec 14.7). |
 | `message_to_adapter` | A message is told to the application exactly once, also after a restart. |
 | `message_from_adapter` | A message from the adapter reaches a reference recipient exactly once. |
 | `messages_to_adapter_disconnects`, `messages_from_adapter_disconnects` | Five messages each way through a slow link with two disconnects and a blackout: each told exactly once, content unchanged. |
