@@ -13,6 +13,7 @@ import asyncio
 import json
 import os
 import shlex
+import shutil
 import sys
 import tempfile
 import time
@@ -1004,8 +1005,191 @@ async def hub_media_messages(a, tmp):
     check("r-2" in ((out["report"] or {}).get("delivered") or ()), "delivery report at r-1: %s" % out["report"])
 
 
+MIB = 1024 * 1024
+HEADER = b"\xff\xfe\xfd\xfc"
+
+
+def _frames_files(bundle):
+    return sorted(os.path.join(bundle, n) for n in os.listdir(bundle) if n.endswith(".rope"))
+
+
+def _spoiled_copy(stick, bundle, dest, how):
+    """Copy of the stick in ``dest`` whose ``bundle`` is damaged (one byte inside the second segment changed) or cut
+    off (the frames end in the middle of the third segment). Returns ``dest``."""
+    shutil.copytree(stick, dest)
+    first = _frames_files(os.path.join(dest, os.path.relpath(bundle, stick)))[0]
+    if how == "damaged":
+        with open(first, "r+b") as f:
+            f.seek(int(1.5 * MIB))
+            b = f.read(1)
+            f.seek(int(1.5 * MIB))
+            f.write(bytes([b[0] ^ 0xFF]))
+    else:
+        with open(first, "r+b") as f:
+            f.truncate(int(2.5 * MIB))
+    return dest
+
+
+async def media_source_in_parts(a, tmp):
+    """A stick too small for the whole recording: the adapter's source writes what fits, learns from the hub's
+    answer what arrived and continues there; the hub ends with the file bit for bit (spec 8.6)."""
+    data = os.urandom(3 * MIB)
+    path, stick = _file(tmp, "rec-0001.dat", data), os.path.join(tmp, "stick")
+    hub = _ref_hub(tmp, {"source-1": "source"})
+    await a.call("start_source", participant="source-1", operation=OP, hub=NOWHERE,
+                 files={"rec-0001.dat": path}, dir=os.path.join(tmp, "src"))
+    await a.call("complete", stream="rec-0001.dat")
+    part1 = await a.call("export_media", medium=stick, max_bytes=int(1.3 * MIB))
+    check(not part1["complete"] and 0 < part1["stream_bytes"] < len(data), "first part: %s" % part1)
+    await hub.import_media(stick)
+    held = _hub_holds(hub, "source-1", "rec-0001.dat")["committed"]
+    check(held == part1["stream_bytes"], "hub holds %d of %d bytes sent" % (held, part1["stream_bytes"]))
+    await hub.export_media(stick, "source-1")
+    await _imported(a, stick, 1)
+    part2 = await a.call("export_media", medium=stick)
+    check(part2["complete"] and part2["stream_bytes"] == len(data) - held,
+          "second part sends %d bytes, expected %d" % (part2["stream_bytes"], len(data) - held))
+    reports = await hub.import_media(stick)
+    check(all(r.ok for r in reports), "hub: %s" % [r.problems for r in reports])
+    e = _hub_holds(hub, "source-1", "rec-0001.dat")
+    check(e["verified"] == "ok" and _content(e["path"]) == data, "hub holds %s" % e)
+
+
+def _media_spoiled_to_adapter(how):
+    async def scenario(a, tmp):
+        """A damaged or cut-off bundle is reported in plain language, not taken as complete; a good copy completes
+        the stream afterwards."""
+        data = os.urandom(3 * MIB)
+        path, stick = _file(tmp, "rec-0001.dat", data), os.path.join(tmp, "stick")
+        hub = _ref_hub(tmp, {"source-1": "source", "c-1": "consumer"})
+        src = _ref(Source, "source-1", tmp, {"rec-0001.dat": path}, os.path.join(tmp, "ref-src"))
+        src.complete("rec-0001.dat")
+        await src.export_media(os.path.join(tmp, "to-hub"))
+        await hub.import_media(os.path.join(tmp, "to-hub"))
+        out = await hub.export_media(stick, "c-1")
+        bad = _spoiled_copy(stick, out.path, os.path.join(tmp, how), how)
+        await a.call("start_consumer", participant="c-1", operation=OP, hub=NOWHERE, dir=os.path.join(tmp, "c"))
+        ans = await a.call("import_media", medium=bad)
+        check(ans["problems"], "the %s bundle was imported without a problem reported" % how)
+        st = await a.call("status")
+        got = next((s for s in st["streams"] if s["stream"] == "source-1/rec-0001.dat"), None)
+        check(got is None or (got["committed"] < len(data) and got["verified"] != "ok"),
+              "stream taken as complete from a %s bundle: %s" % (how, got))
+        if got is not None and got["committed"]:
+            check(_content(got["path"])[:got["committed"]] == data[:got["committed"]],
+                  "bytes stored from the %s bundle differ" % how)
+        await _imported(a, stick, 1)                    # the good copy
+        st = await a.call("status")
+        got = next((s for s in st["streams"] if s["stream"] == "source-1/rec-0001.dat"), None)
+        check(got is not None and got["verified"] == "ok" and _content(got["path"]) == data,
+              "after the good copy: %s" % got)
+    scenario.__name__ = "media_%s_bundle" % how
+    return scenario
+
+
+media_damaged_bundle = _media_spoiled_to_adapter("damaged")
+media_cut_off_bundle = _media_spoiled_to_adapter("cut_off")
+
+
+async def media_repair(a, tmp):
+    """The header of the adapter's recording changes after the data left by stick: the hub's final check fails, its
+    next bundle asks for a repair, and the adapter's source answers with the differing block only (spec 14.7)."""
+    data = bytearray(os.urandom(3 * MIB))
+    path = _file(tmp, "rec-0001.dat", bytes(data))
+    hub = _ref_hub(tmp, {"source-1": "source"})
+    stick = lambda n: os.path.join(tmp, "stick%d" % n)         # noqa: E731 - a fresh stick per trip
+    await a.call("start_source", participant="source-1", operation=OP, hub=NOWHERE,
+                 files={"rec-0001.dat": path}, dir=os.path.join(tmp, "src"))
+    await a.call("export_media", medium=stick(1))
+    await hub.import_media(stick(1))
+    data[2:6] = HEADER
+    with open(path, "r+b") as f:
+        f.seek(2)
+        f.write(HEADER)
+    await a.call("complete", stream="rec-0001.dat")
+    await a.call("export_media", medium=stick(2))
+    [rep] = await hub.import_media(stick(2))
+    check([c[3] for c in rep.checked] == ["mismatch"], "hub's final check before the repair: %s" % rep.checked)
+    out = await hub.export_media(stick(3), "source-1")
+    check(out.repair_requests == 1, "reference hub did not ask for a repair")
+    await _imported(a, stick(3), 1)
+    out = await a.call("export_media", medium=stick(4))
+    check(0 < out["repair_bytes"] <= MIB and out["stream_bytes"] == 0,
+          "repair bundle: %d repair bytes, %d stream bytes" % (out["repair_bytes"], out["stream_bytes"]))
+    [rep] = await hub.import_media(stick(4))
+    check(rep.ok and [c[3] for c in rep.checked] == ["ok"], "after the repair: %s %s" % (rep.checked, rep.problems))
+    check(_content(_hub_holds(hub, "source-1", "rec-0001.dat")["path"]) == bytes(data), "hub holds other bytes")
+
+
+def _hub_spoiled(how):
+    async def scenario(a, tmp):
+        """The hub reports a damaged or cut-off bundle, keeps only intact bytes, and a good copy completes it."""
+        data = os.urandom(3 * MIB)
+        path, stick = _file(tmp, "rec-0001.dat", data), os.path.join(tmp, "stick")
+        await _start_hub_alone(a, tmp, {"source-1": "source"})
+        src = _ref(Source, "source-1", tmp, {"rec-0001.dat": path}, os.path.join(tmp, "ref-src"))
+        src.complete("rec-0001.dat")
+        out = await src.export_media(stick)
+        bad = _spoiled_copy(stick, out.path, os.path.join(tmp, how), how)
+        ans = await a.call("import_media", medium=bad)
+        check(ans["problems"], "the %s bundle was imported without a problem reported" % how)
+        st = await a.call("status")
+        got = next((s for s in st["streams"] if s["participant"] == "source-1"), None)
+        check(got is None or (got["committed"] < len(data) and got["verified"] != "ok"),
+              "stream taken as complete from a %s bundle: %s" % (how, got))
+        if got is not None and got["committed"]:
+            check(_content(got["path"])[:got["committed"]] == data[:got["committed"]],
+                  "bytes stored from the %s bundle differ" % how)
+        await _imported(a, stick, 1)
+        st = await a.call("status")
+        got = next((s for s in st["streams"] if s["participant"] == "source-1"), None)
+        check(got is not None and got["verified"] == "ok" and _content(got["path"]) == data,
+              "after the good copy: %s" % got)
+    scenario.__name__ = "hub_media_%s_bundle" % how
+    return scenario
+
+
+hub_media_damaged_bundle = _hub_spoiled("damaged")
+hub_media_cut_off_bundle = _hub_spoiled("cut_off")
+
+
+async def hub_media_repair(a, tmp):
+    """The hub's final check of a stick fails after a header change at the source; the hub's next bundle asks for a
+    repair, the reference source answers with the differing block, and the hub ends verified (spec 14.7)."""
+    data = bytearray(os.urandom(3 * MIB))
+    path = _file(tmp, "rec-0001.dat", bytes(data))
+    stick = lambda n: os.path.join(tmp, "stick%d" % n)         # noqa: E731
+    await _start_hub_alone(a, tmp, {"source-1": "source"})
+    src = _ref(Source, "source-1", tmp, {"rec-0001.dat": path}, os.path.join(tmp, "ref-src"))
+    await src.export_media(stick(1))
+    await _imported(a, stick(1), 1)
+    data[2:6] = HEADER
+    with open(path, "r+b") as f:
+        f.seek(2)
+        f.write(HEADER)
+    src.complete("rec-0001.dat")
+    await src.export_media(stick(2))
+    ans = await a.call("import_media", medium=stick(2))      # the failed final check is a problem to report
+    check(ans["bundles"] == 1 and ans["problems"], "the failed final check was not reported: %s" % ans)
+    st = await a.call("status")
+    check(st["checked"].get("source-1/rec-0001.dat") == "mismatch", "hub's final check before the repair: %s"
+          % st["checked"])
+    await a.call("export_media", medium=stick(3), participant="source-1")
+    [rep] = await src.import_media(stick(3))
+    check(rep.ok and rep.repair_requests, "the hub's bundle does not ask for a repair (%s)" % rep.problems)
+    out = await src.export_media(stick(4))
+    check(0 < out.repair_bytes <= MIB, "reference source sent %d repair bytes" % out.repair_bytes)
+    await _imported(a, stick(4), 1)
+    st = await a.call("status")
+    check(st["checked"].get("source-1/rec-0001.dat") == "ok", "after the repair: %s" % st["checked"])
+    got = next(s for s in st["streams"] if s["participant"] == "source-1")
+    check(got["gen"] == 1 and _content(got["path"]) == bytes(data), "hub holds %s" % got)
+
+
 MEDIA_SCENARIOS = [media_source, media_consumer, media_message_to_adapter, media_message_from_adapter,
-                   media_foreign_bundle, hub_media_from_source, hub_media_to_consumer, hub_media_messages]
+                   media_foreign_bundle, media_source_in_parts, media_damaged_bundle, media_cut_off_bundle,
+                   media_repair, hub_media_from_source, hub_media_to_consumer, hub_media_messages,
+                   hub_media_damaged_bundle, hub_media_cut_off_bundle, hub_media_repair]
 
 
 SCENARIOS = [source_basic, source_disconnects, source_restart, source_repair, source_new_generation, reject_unknown,

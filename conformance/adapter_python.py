@@ -80,7 +80,8 @@ class Adapter:
                 rep = await self.p.export_media(c["medium"], c["participant"], limit)
             else:
                 rep = await self.p.export_media(c["medium"], limit)
-            return {"complete": rep.complete, "stream_bytes": rep.stream_bytes, "messages": rep.messages}
+            return {"complete": rep.complete, "stream_bytes": rep.stream_bytes, "messages": rep.messages,
+                    "repair_bytes": rep.repair_bytes, "path": rep.path}
         if cmd == "import_media":
             reports = await self.p.import_media(c["medium"])
             return {"bundles": len(reports), "problems": [p for r in reports for p in r.problems]}
