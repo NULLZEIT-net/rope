@@ -454,7 +454,8 @@ same network can still read, replay or forge traffic; that is exactly what the l
 ## 13. Test bench (proposed)
 
 **Conformance suite (proposed, 2026-11-06):** `conformance/` tests any participant implementation over TCP through
-a small adapter (JSON lines on stdin/stdout), against the reference hub and the link simulator. See
+a small adapter (JSON lines on stdin/stdout), against the reference hub and the link simulator. Since 2026-11-10 it
+also tests a hub implementation, against reference participants. See
 `conformance/README.md` for the adapter commands and the scenarios.
 
 A custom protocol brings custom bugs, so faults are produced in tests rather than discovered in the field. The test

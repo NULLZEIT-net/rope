@@ -8,6 +8,9 @@ The package version is `rope_protocol.__version__`; the wire protocol has its ow
 ## [Unreleased]
 
 ### Added
+- Conformance suite: the **hub role** under test (#32). New adapter command `start_hub`; 18 scenarios with reference
+  participants: streams with disconnects, restart and block repair, relay to a consumer, messages with delivery
+  reports and to the hub itself, rejects, and damaged frames from a scripted participant. 40 scenarios in all.
 - `docs/api.md`: the Python API - hub, source, consumer, recipient, messages, offline media, participant list, TLS, status - with a quick start that is run as written.
 
 ### Changed

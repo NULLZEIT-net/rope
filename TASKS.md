@@ -22,6 +22,8 @@ _(see `docs/ideas.md`)_
 ## In progress
 
 ## Done
+- 2026-11-10 Conformance suite: the hub role under test (#32), 40 scenarios in all. Still open in #32: offline
+  media bundles.
 - 2026-11-08 Version 0.1.4: `Hub.connections()` and `Hub.last_seen()` (#43); conformance suite with 22
   scenarios (#32); normative wording of the spec (#31); a participant answers a bad frame with `ERROR`.
 - 2026-11-07 Version 0.1.3: announced operation (#27), test vectors, conformance suite (#32), spec 1.0 frozen

@@ -15,6 +15,7 @@ import threading
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 
 from rope_protocol.consumer import Consumer  # noqa: E402
+from rope_protocol.hub import Hub  # noqa: E402
 from rope_protocol.recipient import Recipient  # noqa: E402
 from rope_protocol.source import Source  # noqa: E402
 
@@ -25,10 +26,16 @@ class Adapter:
     def __init__(self):
         self.p = None                       # the one participant this adapter runs
         self.told = {}                      # message id -> how often on_message was called
-        self.checked = {}                   # stream -> result of the final check (source)
+        self.checked = {}                   # stream -> result of the final check (source; hub: "<source>/<stream>")
+        self.hub_inbox = []                 # (meta, body) of messages told to a hub
 
     def _told(self, meta, body):
         self.told[meta["id"]] = self.told.get(meta["id"], 0) + 1
+        if self.told[meta["id"]] == 1:
+            self.hub_inbox.append((meta, body))     # a hub has no mailbox of its own: what it was told
+
+    def _hub_checked(self, participant, stream, gen, result, path):
+        self.checked["%s/%s" % (participant, stream)] = result
 
     def _hub(self, c):
         host, port = c["hub"].rsplit(":", 1)
@@ -51,6 +58,13 @@ class Adapter:
             self.p = Recipient(c["participant"], c["operation"], host, c["dir"], hub_port=port, poll_s=0.05,
                                on_message=self._told, **FAST).start()
             return {}
+        if cmd == "start_hub":
+            self.checked = {}
+            self.p = await Hub(c["dir"], c["participants"], c["operation"], port=int(c.get("port", 0)),
+                               heartbeat_s=float(c.get("heartbeat_s", 0.2)), timeout_s=float(c.get("timeout_s", 1.0)),
+                               poll_s=0.05, segment_bytes=64 * 1024, on_stream_checked=self._hub_checked,
+                               on_message=self._told, retell_s=1.0).start()
+            return {"port": self.p.port}
         if cmd == "add_stream":
             self.p.add_stream(c["stream"], c["path"])
             return {}
@@ -77,10 +91,19 @@ class Adapter:
 
     def status(self):
         p = self.p
-        out = {"running": p is not None, "connected": bool(p and p.connected.is_set()), "rejected": None,
+        out = {"running": p is not None, "connected": False, "rejected": None,
                "checked": dict(self.checked), "told": dict(self.told), "inbox": [], "streams": []}
         if p is None:
             return out
+        if isinstance(p, Hub):
+            out["sessions"] = sorted(p.connections())
+            out["connected"] = bool(out["sessions"])
+            out["inbox"] = [{"id": m["id"], "from": m["from"], "kind": m["kind"], "body_hex": body.hex()}
+                            for m, body in self.hub_inbox]
+            out["streams"] = [{k: e[k] for k in ("participant", "stream", "gen", "committed", "complete", "verified",
+                                                 "path")} for e in p.store.entries()]
+            return out
+        out["connected"] = p.connected.is_set()
         if p.rejected is not None:
             out["rejected"] = {"code": p.rejected.code, "operation": getattr(p.rejected, "operation", None)}
         for m in p.inbox():
