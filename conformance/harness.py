@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "src"))
 
 from rope_protocol import frames as F  # noqa: E402
 from rope_protocol.channel import now_ms  # noqa: E402
+from rope_protocol.consumer import Consumer  # noqa: E402
 from rope_protocol.frames import Frame, FrameType  # noqa: E402
 from rope_protocol.hub import Hub  # noqa: E402
 from rope_protocol.linksim import LinkProxy, Profile  # noqa: E402
@@ -491,13 +492,324 @@ async def frame_reject_announced(a, tmp):
 
 
 with open(VECTORS, encoding="utf-8") as _f:
-    BAD_VECTORS = [_bad_vector_scenario(v) for v in json.load(_f)["invalid"]]
+    _INVALID = json.load(_f)["invalid"]
+BAD_VECTORS = [_bad_vector_scenario(v) for v in _INVALID]
+
+
+# --- the hub under test ----------------------------------------------------------------------------------------------
+# The adapter runs the hub; reference participants connect to it through the link simulator.
+
+class HubBench:
+    """The adapter's hub behind the link simulator. ``address``/``port``: where reference participants connect."""
+
+    def __init__(self, a, tmp, participants, profile="lan", script=None):
+        self.a, self.tmp, self.participants, self.profile, self.script = a, tmp, participants, profile, script
+        self.refs = []
+
+    async def start_hub(self, port=0):
+        ans = await self.a.call("start_hub", operation=OP, participants=self.participants,
+                                dir=os.path.join(self.tmp, "hub"), port=port, **HUB)
+        check(isinstance(ans.get("port"), int) and ans["port"] > 0, "start_hub did not answer with a port")
+        return ans["port"]
+
+    async def __aenter__(self):
+        self.hub_port = await self.start_hub()
+        self.proxy = await LinkProxy(("127.0.0.1", 0), ("127.0.0.1", self.hub_port), self.profile,
+                                     script=self.script).start()
+        self.port = self.proxy.port
+        return self
+
+    async def __aexit__(self, *exc):
+        for r in self.refs:
+            await r.stop()
+        await self.proxy.stop()
+
+    def ref(self, p):
+        self.refs.append(p)
+        return p.start()
+
+    async def restart(self):
+        """Stop the hub and start it again on the same folder and port (the proxy keeps its target)."""
+        await self.a.call("stop")
+        end = time.monotonic() + 10
+        while True:
+            try:
+                return await self.start_hub(self.hub_port)
+            except Failed:                              # the port may take a moment to be free again
+                check(time.monotonic() < end, "hub could not start again on port %d" % self.hub_port)
+                await asyncio.sleep(0.2)
+
+    async def stream(self, participant, stream, gen=1):
+        st = await self.a.call("status")
+        return next((s for s in st["streams"] if (s["participant"], s["stream"], s["gen"]) ==
+                     (participant, stream, gen)), None)
+
+    async def wait_stream(self, participant, stream, cond, text, gen=1, timeout=60):
+        end = time.monotonic() + timeout
+        while True:
+            s = await self.stream(participant, stream, gen)
+            if s is not None and cond(s):
+                return s
+            check(time.monotonic() < end, "%s (hub reports %s)" % (text, s))
+            await asyncio.sleep(0.1)
+
+
+async def _wait_for(cond, text, timeout=60):
+    end = time.monotonic() + timeout
+    while not cond():
+        check(time.monotonic() < end, text)
+        await asyncio.sleep(0.05)
+
+
+async def _hub_from_source(a, tmp, data_parts, profile="lan", script=None, restart_at=None):
+    """A reference source sends a growing file to the adapter's hub: bit for bit, final check ok at both ends."""
+    path = _file(tmp, "rec-0001.dat", data_parts[0])
+    total = sum(len(p) for p in data_parts)
+    async with HubBench(a, tmp, {"source-1": "source"}, profile, script) as b:
+        src = b.ref(Source("source-1", OP, "127.0.0.1", {"rec-0001.dat": path}, os.path.join(tmp, "ref-src"),
+                           hub_port=b.port, segment_bytes=64 * 1024, **REF))
+        await _wait_for(lambda: src.connected.is_set(), "reference source did not connect to the hub")
+        for part in data_parts[1:]:
+            _append(path, part)
+        if restart_at is not None:
+            await b.wait_stream("source-1", "rec-0001.dat", lambda s: s["committed"] >= restart_at,
+                                "nothing committed before the restart")
+            await b.restart()
+        await b.wait_stream("source-1", "rec-0001.dat", lambda s: s["committed"] >= total,
+                            "hub did not commit all %d bytes" % total)
+        src.complete("rec-0001.dat")
+        result = await src.wait_checked("rec-0001.dat", 60)
+        check(result == "ok", "final check at the source: %s" % result)
+        got = await b.wait_stream("source-1", "rec-0001.dat", lambda s: s["complete"] and s["verified"],
+                                  "hub does not report the stream complete and verified", timeout=10)
+        check(got["verified"] == "ok", "hub reports verified=%s" % got["verified"])
+        check(_content(got["path"]) == b"".join(data_parts), "stream at the hub differs from the file")
+        check(await b.stream("source-1", "rec-0001.dat", 2) is None, "a second generation was started")
+        st = await a.call("status")
+        check(st["checked"].get("source-1/rec-0001.dat") == "ok", "hub application was not told the final check: %s"
+              % st["checked"])
+
+
+async def hub_from_source(a, tmp):
+    await _hub_from_source(a, tmp, [os.urandom(300_000), os.urandom(200_000)])
+
+
+async def hub_from_source_disconnects(a, tmp):
+    await _hub_from_source(a, tmp, [os.urandom(600_000)], Profile("slow", rate=400_000),
+                           script=[(0.4, "disconnect", 0.2), (1.0, "disconnect", 0.3), (1.3, "blackout", 0.5)])
+
+
+async def hub_restart(a, tmp):
+    await _hub_from_source(a, tmp, [os.urandom(900_000)], Profile("slow", rate=300_000), restart_at=100_000)
+
+
+async def hub_repair(a, tmp):
+    """Bytes changed in place at the source after sending are repaired at the hub without a new generation (14.7)."""
+    data = bytearray(os.urandom(3_000_000))
+    path = _file(tmp, "rec-0001.dat", bytes(data))
+    async with HubBench(a, tmp, {"source-1": "source"}) as b:
+        src = b.ref(Source("source-1", OP, "127.0.0.1", {"rec-0001.dat": path}, os.path.join(tmp, "ref-src"),
+                           hub_port=b.port, **REF))
+        await b.wait_stream("source-1", "rec-0001.dat", lambda s: s["committed"] >= len(data), "data not committed")
+        data[0:64] = os.urandom(64)
+        with open(path, "r+b") as f:
+            f.write(bytes(data[0:64]))
+        src.complete("rec-0001.dat")
+        result = await src.wait_checked("rec-0001.dat", 60)
+        check(result == "ok", "final check after repair: %s" % result)
+        got = await b.wait_stream("source-1", "rec-0001.dat", lambda s: s["verified"] == "ok",
+                                  "hub does not report the repaired stream verified", timeout=10)
+        check(_content(got["path"]) == bytes(data), "stream at the hub differs from the changed file")
+        check(await b.stream("source-1", "rec-0001.dat", 2) is None, "a new generation instead of a block repair")
+
+
+async def hub_relay(a, tmp):
+    """A stream of a reference source reaches a reference consumer through the hub, bit for bit and verified."""
+    data = os.urandom(400_000)
+    path = _file(tmp, "rec-0001.dat", data)
+    async with HubBench(a, tmp, {"source-1": "source", "c-1": "consumer"}) as b:
+        src = b.ref(Source("source-1", OP, "127.0.0.1", {"rec-0001.dat": path}, os.path.join(tmp, "ref-src"),
+                           hub_port=b.port, **REF))
+        con = b.ref(Consumer("c-1", OP, "127.0.0.1", os.path.join(tmp, "ref-c"), hub_port=b.port,
+                             timeout_s=1.0, backoff=(0.05, 0.3)))
+        src.complete("rec-0001.dat")
+
+        def relayed():
+            return next((s for s in con.streams() if s["stream"] == "source-1/rec-0001.dat" and s["verified"]), None)
+        await _wait_for(relayed, "relayed stream not verified at the consumer")
+        check(relayed()["verified"] == "ok", "consumer final check: %s" % relayed()["verified"])
+        check(_content(relayed()["path"]) == data, "relayed stream differs")
+
+
+async def hub_messages(a, tmp):
+    """Five messages between two reference recipients through the hub and a breaking link: each told exactly once,
+    content unchanged, and the sender's delivery report names the recipient (spec 8.5)."""
+    told, reports = [], {}
+    async with HubBench(a, tmp, {"r-1": "recipient", "r-2": "recipient"}, **FLAKY) as b:
+        r2 = b.ref(Recipient("r-2", OP, "127.0.0.1", os.path.join(tmp, "ref-r2"), hub_port=b.port,
+                             on_message=lambda meta, body: told.append((meta["id"], body)), **REF))
+        r1 = b.ref(Recipient("r-1", OP, "127.0.0.1", os.path.join(tmp, "ref-r1"), hub_port=b.port,
+                             on_delivery=lambda msg_id, rep: reports.__setitem__(msg_id, rep), **REF))
+        sent = {}
+        for _ in range(5):
+            body = os.urandom(30_000)
+            sent[r1.send_message(["r-2"], "note", body)] = body
+        await _wait_for(lambda: len({i for i, _ in told}) >= len(sent), "not every message reached r-2")
+        await _wait_for(lambda: all("r-2" in (reports.get(i) or {}).get("delivered", ()) for i in sent),
+                        "delivery reports incomplete: %s" % reports)
+        await asyncio.sleep(1.5)
+        check(len(told) == len(sent), "%d messages told for %d sent" % (len(told), len(sent)))
+        check(all(sent.get(i) == body for i, body in told), "message content differs")
+        check(r2.connected.is_set(), "r-2 not connected")
+
+
+async def hub_message_to_hub(a, tmp):
+    """A message addressed to the hub is told to the hub's application exactly once, also across a hub restart."""
+    body = "Grüße – ✓".encode("utf-8")
+    async with HubBench(a, tmp, {"source-1": "source"}) as b:
+        src = b.ref(Source("source-1", OP, "127.0.0.1", {}, os.path.join(tmp, "ref-src"), hub_port=b.port, **REF))
+        msg_id = src.send_message(["hub"], "note", body)
+        st = await a.until(lambda s: s["told"].get(msg_id), "message to the hub not told")
+        got = next((m for m in st["inbox"] if m["id"] == msg_id), None)
+        check(got is not None and bytes.fromhex(got["body_hex"]) == body and got["from"] == "source-1",
+              "message content differs: %s" % got)
+        await b.restart()
+        await a.until(lambda s: s["connected"], "source did not reconnect after the hub restart")
+        await asyncio.sleep(1.5)
+        st = await a.call("status")
+        check(st["told"].get(msg_id) == 1, "message told %s times" % st["told"].get(msg_id))
+
+
+def _hub_reject_scenario(name, participants, participant, operation, code):
+    async def scenario(a, tmp):
+        async with HubBench(a, tmp, participants) as b:
+            src = b.ref(Source(participant, operation, "127.0.0.1", {"x.dat": _file(tmp, "x.dat", b"x")},
+                               os.path.join(tmp, "ref-src"), hub_port=b.port, **REF))
+            await _wait_for(lambda: src.rejected is not None, "reference source was not rejected", 20)
+            check(src.rejected.code == code, "reject code %s, expected %s" % (src.rejected.code, code))
+            st = await a.call("status")
+            check(not any(s["participant"] == participant for s in st["streams"]),
+                  "hub stored data of a rejected participant")
+    scenario.__name__ = name
+    return scenario
+
+
+hub_reject_unknown = _hub_reject_scenario("hub_reject_unknown", {"source-1": "source"}, "source-9", OP,
+                                          "unknown_participant")
+hub_reject_wrong_operation = _hub_reject_scenario("hub_reject_wrong_operation", {"source-1": "source"}, "source-1",
+                                                  "op-2", "wrong_operation")
+hub_reject_role = _hub_reject_scenario("hub_reject_role", {"source-1": "consumer"}, "source-1", OP, "role")
+
+
+class RawClient:
+    """A scripted participant for frame-level checks against the hub under test: sends exact bytes, records frames."""
+
+    async def open(self, port):
+        self.reader, self.writer = await asyncio.wait_for(asyncio.open_connection("127.0.0.1", port), 5)
+        self.dec = F.FrameDecoder()
+        self.frames = []
+        self.closed = False
+        return self
+
+    def send(self, raw):
+        self.writer.write(raw)
+
+    def hello(self, participant="source-1"):
+        self.send(F.encode(Frame(FrameType.HELLO, dict(participant=participant, operation=OP, role="source",
+                                                       versions=[1], t=now_ms(), have=[]))))
+
+    async def listen(self, seconds):
+        """Frames until the hub closes the connection or ``seconds`` pass; heartbeats keep the session alive."""
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            try:
+                data = await asyncio.wait_for(self.reader.read(65536), 0.15)
+            except asyncio.TimeoutError:
+                data = None
+            except ConnectionError:
+                data = b""
+            if data is not None and not data:
+                self.closed = True
+                return
+            if data:
+                self.frames += self.dec.feed(data)
+            try:
+                self.send(F.encode(Frame(FrameType.HEARTBEAT, dict(t=now_ms()))))
+                await self.writer.drain()
+            except ConnectionError:
+                self.closed = True
+                return
+
+    def close(self):
+        self.writer.close()
+
+
+async def _raw_to_hub(a, tmp, after_hello, listen_s=3.0, hello=True):
+    """Greets the adapter's hub (when ``hello``), sends ``after_hello`` and returns the client with what came back."""
+    async with HubBench(a, tmp, {"source-1": "source"}) as b:
+        c = await RawClient().open(b.hub_port)
+        try:
+            if hello:                                   # the damaged frame follows the WELCOME, as in a session
+                c.hello()
+                end = time.monotonic() + 5
+                while not c.frames and not c.closed and time.monotonic() < end:
+                    await c.listen(0.2)
+            c.send(after_hello)
+            await c.listen(listen_s)
+            return c
+        finally:
+            c.close()
+
+
+def _hub_bad_vector_scenario(v):
+    async def scenario(a, tmp):
+        c = await _raw_to_hub(a, tmp, bytes.fromhex(v["frame_hex"]))
+        types = [FrameType(f.type).name if f.type in FrameType._value2member_map_ else hex(f.type) for f in c.frames]
+        check(types[:1] == ["WELCOME"], "hub did not welcome the greeting: %s" % types)
+        errs = [f for f in c.frames if f.type == FrameType.ERROR]
+        check(errs, "no ERROR after the damaged frame %r (got %s)" % (v["name"], types))
+        check(errs[0].meta["code"] == v["error"], "ERROR code %s, expected %s" % (errs[0].meta["code"], v["error"]))
+        check(c.closed, "connection not closed after ERROR")
+    scenario.__name__ = "hub_frame_bad_" + v["name"].replace("-", "_")
+    return scenario
+
+
+HUB_BAD_VECTORS = [_hub_bad_vector_scenario(v) for v in _INVALID]
+
+
+async def hub_frame_first_not_hello(a, tmp):
+    """A connection that does not start with HELLO is answered with ERROR bad_frame and closed (spec 14.5)."""
+    c = await _raw_to_hub(a, tmp, F.encode(Frame(FrameType.HEARTBEAT, dict(t=now_ms()))), hello=False)
+    errs = [f for f in c.frames if f.type == FrameType.ERROR]
+    check(errs and errs[0].meta["code"] == "bad_frame", "no ERROR bad_frame: %s" % [f.meta for f in c.frames])
+    check(c.closed, "connection not closed after ERROR")
+
+
+async def hub_frame_unknown_core_type(a, tmp):
+    c = await _raw_to_hub(a, tmp, F.encode(Frame(0x7E, dict(t=now_ms()))))
+    errs = [f for f in c.frames if f.type == FrameType.ERROR]
+    check(errs and errs[0].meta["code"] == "unknown_type", "unknown core type not answered with ERROR unknown_type")
+    check(c.closed, "connection not closed after ERROR")
+
+
+async def hub_frame_extension_ignored(a, tmp):
+    """An unknown extension frame (0x80+) from a participant is ignored: no ERROR, the session goes on."""
+    c = await _raw_to_hub(a, tmp, F.encode(Frame(0x90, dict(x=1))), listen_s=2.0)
+    check(not [f for f in c.frames if f.type == FrameType.ERROR], "extension frame answered with ERROR")
+    check(not c.closed, "connection closed after an extension frame")
+    check(sum(f.type == FrameType.HEARTBEAT for f in c.frames) >= 2, "session did not go on (no heartbeats)")
+
+
+HUB_SCENARIOS = [hub_from_source, hub_from_source_disconnects, hub_restart, hub_repair, hub_relay, hub_messages,
+                 hub_message_to_hub, hub_reject_unknown, hub_reject_wrong_operation, hub_reject_role,
+                 hub_frame_first_not_hello] + HUB_BAD_VECTORS + [hub_frame_unknown_core_type,
+                                                                 hub_frame_extension_ignored]
 
 
 SCENARIOS = [source_basic, source_disconnects, source_restart, source_repair, source_new_generation, reject_unknown,
              reject_wrong_operation, reject_role, consumer_relay, message_to_adapter, message_from_adapter,
-             messages_to_adapter_disconnects, messages_from_adapter_disconnects, frame_hello] + BAD_VECTORS + [frame_unknown_core_type, frame_extension_ignored,
-                                                                 frame_reject_announced]
+             messages_to_adapter_disconnects, messages_from_adapter_disconnects, frame_hello] + BAD_VECTORS + [
+                 frame_unknown_core_type, frame_extension_ignored, frame_reject_announced] + HUB_SCENARIOS
 
 
 async def run(adapter_cmd, only=None, out=print):
