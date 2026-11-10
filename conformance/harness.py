@@ -214,6 +214,72 @@ async def consumer_relay(a, tmp):
             await src.stop()
 
 
+def _relayed(st, name="source-1/rec-0001.dat", gen=1):
+    return next((x for x in st["streams"] if x["stream"] == name and x["gen"] == gen), None)
+
+
+async def consumer_disconnects(a, tmp):
+    """A relayed stream reaches the adapter's consumer through a slow link with disconnects and a blackout."""
+    data = os.urandom(600_000)
+    path = _file(tmp, "rec-0001.dat", data)
+    async with Bench(tmp, {"source-1": "source", "c-1": "consumer"}, Profile("slow", rate=400_000),
+                     script=[(0.4, "disconnect", 0.2), (1.0, "disconnect", 0.3), (1.3, "blackout", 0.5)]) as b:
+        src = Source("source-1", OP, "127.0.0.1", {"rec-0001.dat": path}, os.path.join(tmp, "ref-src"),
+                     hub_port=b.hub.port, **REF).start()
+        try:
+            await a.call("start_consumer", participant="c-1", operation=OP, hub=b.address, dir=os.path.join(tmp, "c"))
+            src.complete("rec-0001.dat")
+            st = await a.until(lambda s: (_relayed(s) or {}).get("verified") == "ok", "relayed stream not verified", 60)
+            check(_content(_relayed(st)["path"]) == data, "relayed stream differs")
+        finally:
+            await src.stop()
+
+
+async def consumer_restart(a, tmp):
+    """The adapter's consumer is stopped mid-stream and started again on the same state: it reports what it holds in
+    HELLO.have, the hub continues there, and the stream ends bit for bit (spec 14.5)."""
+    data = os.urandom(900_000)
+    path = _file(tmp, "rec-0001.dat", data)
+    async with Bench(tmp, {"source-1": "source", "c-1": "consumer"}, Profile("slow", rate=300_000)) as b:
+        src = Source("source-1", OP, "127.0.0.1", {"rec-0001.dat": path}, os.path.join(tmp, "ref-src"),
+                     hub_port=b.hub.port, **REF).start()
+        try:
+            start = dict(participant="c-1", operation=OP, hub=b.address, dir=os.path.join(tmp, "c"))
+            await a.call("start_consumer", **start)
+            await a.until(lambda s: (_relayed(s) or {}).get("committed", 0) >= 100_000, "nothing relayed", 30)
+            await a.call("stop")
+            await a.call("start_consumer", **start)
+            src.complete("rec-0001.dat")
+            st = await a.until(lambda s: (_relayed(s) or {}).get("verified") == "ok", "relayed stream not verified", 60)
+            check(_content(_relayed(st)["path"]) == data, "relayed stream differs after the restart")
+            check(_relayed(st, gen=2) is None, "a second generation at the consumer")
+        finally:
+            await src.stop()
+
+
+async def consumer_repair(a, tmp):
+    """The adapter's consumer holds bytes that the source changed in place afterwards (a header): the hub is repaired
+    first, then the consumer's final check fails, its BLOCK_SUMS make the hub resend the differing block, and the
+    consumer ends verified with the changed file (spec 14.7)."""
+    data = bytearray(os.urandom(3_000_000))
+    path = _file(tmp, "rec-0001.dat", bytes(data))
+    async with Bench(tmp, {"source-1": "source", "c-1": "consumer"}) as b:
+        src = Source("source-1", OP, "127.0.0.1", {"rec-0001.dat": path}, os.path.join(tmp, "ref-src"),
+                     hub_port=b.hub.port, **REF).start()
+        try:
+            await a.call("start_consumer", participant="c-1", operation=OP, hub=b.address, dir=os.path.join(tmp, "c"))
+            await a.until(lambda s: (_relayed(s) or {}).get("committed", 0) >= len(data), "not all relayed", 60)
+            data[0:64] = os.urandom(64)
+            with open(path, "r+b") as f:
+                f.write(bytes(data[0:64]))
+            src.complete("rec-0001.dat")
+            st = await a.until(lambda s: (_relayed(s) or {}).get("verified") == "ok", "consumer not verified", 60)
+            check(_content(_relayed(st)["path"]) == bytes(data), "consumer holds other bytes than the changed file")
+            check(_relayed(st, gen=2) is None, "a new generation instead of a block repair")
+        finally:
+            await src.stop()
+
+
 async def message_to_adapter(a, tmp):
     """A message for the adapter is told exactly once, also across a restart of the adapter's participant."""
     body = "Grüße – ✓".encode("utf-8")
@@ -1285,7 +1351,8 @@ MEDIA_SCENARIOS = [media_source, media_consumer, media_message_to_adapter, media
 
 
 SCENARIOS = [source_basic, source_disconnects, source_restart, source_repair, source_new_generation, reject_unknown,
-             reject_wrong_operation, reject_role, consumer_relay, message_to_adapter, message_from_adapter,
+             reject_wrong_operation, reject_role, consumer_relay, consumer_disconnects, consumer_restart,
+             consumer_repair, message_to_adapter, message_from_adapter,
              messages_to_adapter_disconnects, messages_from_adapter_disconnects, frame_hello] + BAD_VECTORS + [
                  frame_unknown_core_type, frame_extension_ignored, frame_reject_announced] + HUB_SCENARIOS \
     + MEDIA_SCENARIOS

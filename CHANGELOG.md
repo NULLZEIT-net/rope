@@ -8,6 +8,8 @@ The package version is `rope_protocol.__version__`; the wire protocol has its ow
 ## [Unreleased]
 
 ### Added
+- Conformance suite: three scenarios for a **consumer over TCP**: disconnects, restart with `HELLO.have`, block
+  repair at the consumer (spec 14.7). Found missing while writing the consumer of rope-rs (#33). 60 scenarios in all.
 - Conformance suite: **offline media** (#32). New adapter commands `export_media` and `import_media`; 17 scenarios
   for both roles without any network: streams to the hub and on to a consumer, messages both ways with receipts and
   delivery reports, a second import changes nothing, a bundle for someone else is left alone; a stick too small for
